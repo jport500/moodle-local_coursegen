@@ -45,6 +45,9 @@ class job_manager {
     /** @var string Job status: corpus ready (P1 end state; P2 moves to blueprinted). */
     public const STATUS_EXTRACTED = 'extracted';
 
+    /** @var string Job status: blueprint generated, awaiting review (P2 end state). */
+    public const STATUS_BLUEPRINTED = 'blueprinted';
+
     /** @var string Job status: a stage failed. */
     public const STATUS_FAILED = 'failed';
 

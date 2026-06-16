@@ -24,6 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['blueprintimage'] = 'Image planned';
+$string['blueprintquiz'] = 'Quiz: {$a} questions';
+$string['blueprintview'] = 'Generated blueprint';
 $string['coursegen:configure'] = 'Configure the AI course builder';
 $string['coursegen:generate'] = 'Generate courses with the AI course builder';
 $string['coursegen:reviewgate'] = 'Approve a generation blueprint for materialization';
@@ -32,6 +35,7 @@ $string['error_badcontext'] = 'The course builder must be opened in a course cat
 $string['error_nosource'] = 'Provide a topic or upload at least one source file.';
 $string['error_sourcetoolarge'] = 'The uploaded sources exceed the per-job limit ({$a}).';
 $string['error_unsupportedtype'] = 'Unsupported source file type: {$a}.';
+$string['estimatedunits'] = 'Estimated generation units: {$a}';
 $string['extractionfailed'] = 'Text could not be extracted from a source file.';
 $string['field_generate'] = 'Create job';
 $string['field_mode'] = 'Generation mode';
@@ -41,6 +45,7 @@ $string['field_topic_help'] = 'Optionally describe the course topic. You can pro
 $string['jobqueued'] = 'Generation job {$a} created; source extraction has been queued.';
 $string['mode_automatic'] = 'Automatic (no review gate)';
 $string['mode_outlinefirst'] = 'Outline first (review the blueprint before building)';
+$string['noblueprint'] = 'No blueprint has been generated yet (job status: {$a}).';
 $string['pluginname'] = 'AI course builder';
 $string['privacy:metadata:coursegen_blueprint'] = 'The editable generation plan (blueprint) authored for a generation job.';
 $string['privacy:metadata:coursegen_blueprint:content'] = 'The serialized plan: sections, objectives, content types, and assessment spec.';
@@ -106,6 +111,8 @@ $string['setting_provider_image'] = 'Image tier provider';
 $string['setting_provider_image_desc'] = 'Provider for diagram and illustration generation.';
 $string['setting_provider_reasoning'] = 'Reasoning tier provider';
 $string['setting_provider_reasoning_desc'] = 'Provider for blueprint generation. Low volume and high leverage — a strong model is appropriate here.';
+$string['setting_reasoning_budget_tokens'] = 'Reasoning working budget (tokens)';
+$string['setting_reasoning_budget_tokens_desc'] = 'Approximate token budget for a single reasoning call. When a job\'s corpus exceeds this, the corpus is summarized in chunks before the blueprint is synthesised (map-reduce). Distinct from the per-job ingestion cap.';
 $string['setting_warn_threshold_pct'] = 'Warning threshold (%)';
 $string['setting_warn_threshold_pct_desc'] = 'Percentage of the spend cap at which a soft warning is shown before the hard cap is reached.';
 $string['setting_wrap_mucertify'] = 'Offer "wrap in certification"';
@@ -113,3 +120,4 @@ $string['setting_wrap_mucertify_desc'] = 'Allow a generated course to be wrapped
 $string['setting_wrap_muprog'] = 'Offer "wrap in program"';
 $string['setting_wrap_muprog_desc'] = 'Allow a generated course to be wrapped into a tool_muprog program as an optional finalize step. Off by default.';
 $string['task_extractcorpus'] = 'Extract source corpus for course generation';
+$string['task_generateblueprint'] = 'Generate course blueprint';

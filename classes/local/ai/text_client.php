@@ -15,23 +15,29 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_coursegen.
+ * Seam over the AI Providers text-generation action.
  *
  * @package    local_coursegen
  * @copyright  2026 LMS Light
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+namespace local_coursegen\local\ai;
 
-$plugin->component = 'local_coursegen';
-$plugin->version = 2026061602;
-$plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
-$plugin->maturity = MATURITY_ALPHA;
-$plugin->release = 'v0.1.0';
-$plugin->dependencies = [
-    // Generated courses default to the format_pathway course format (DECISIONS D10).
-    'format_pathway' => 2025021586,
-    // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
-    'local_quizgenpro' => 2026012301,
-];
+/**
+ * A narrow interface around a single `reasoning`-tier text-generation call.
+ *
+ * The real implementation routes through Moodle's AI Providers subsystem;
+ * tests inject a stub so no live model is contacted (DECISIONS D5).
+ */
+interface text_client {
+    /**
+     * Generate text for a prompt.
+     *
+     * @param string $prompt The full prompt to send.
+     * @param \context $context The context the request is made in.
+     * @param int $userid The user the request is attributed to.
+     * @return text_result The outcome, including resolved model/provider for logging.
+     */
+    public function generate(string $prompt, \context $context, int $userid): text_result;
+}

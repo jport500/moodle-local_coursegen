@@ -130,6 +130,14 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    $settings->add(new admin_setting_configtext(
+        'local_coursegen/reasoning_budget_tokens',
+        get_string('setting_reasoning_budget_tokens', 'local_coursegen'),
+        get_string('setting_reasoning_budget_tokens_desc', 'local_coursegen'),
+        '12000',
+        PARAM_INT
+    ));
+
     // Generation mode and content defaults (SPEC §6, DECISIONS D3).
     $settings->add(new admin_setting_heading(
         'local_coursegen/heading_modes',

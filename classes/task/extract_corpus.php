@@ -112,6 +112,13 @@ class extract_corpus extends \core\task\adhoc_task {
         }
 
         $this->set_job_status($job, job_manager::STATUS_EXTRACTED);
+
+        // Wire the pipeline: queue blueprint generation (P2). The user id is
+        // carried forward so the reasoning call runs in the right context.
+        $next = new generate_blueprint();
+        $next->set_custom_data((object) ['jobid' => $job->id]);
+        $next->set_userid($this->get_userid() ?: (int) $job->userid);
+        \core\task\manager::queue_adhoc_task($next);
     }
 
     /**
