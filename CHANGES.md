@@ -3,6 +3,28 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.9.0 — 2026-06-16 (Phase 9: pre-pilot cleanup)
+
+Final cleanup before the pilot; no new features.
+
+- **Refusal leaves the job COMPLETE, not FAILED (DECISIONS D18 amended).** When a
+  re-materialize is refused to protect a populated wrap (P8), the previously-built
+  course is still live and serving learners — so the job is genuinely complete.
+  `materializer::refuse()` now sets COMPLETE and surfaces the reason only through
+  the §10.2 audit log (outcome `failure`) and the caller's `false` return. Marking
+  it FAILED misrepresented a healthy course and stranded the admin, because nothing
+  re-drives a FAILED job.
+- **Real retry path (D18).** The reopen was broadened so the refusal's promised
+  retry actually exists: `review_gate::reopen_for_reedit` (renamed from
+  `reopen_if_approved`) now reopens from COMPLETE as well as APPROVED, so editing
+  and re-approving a built course re-drives materialize. Clearing the allocations,
+  then editing + re-approving, rebuilds with an empty wrap. This also fixes a
+  latent bug: an edit to a completed job previously saved a blueprint version that
+  never reached the live course.
+- **Pre-pilot release posture (D19).** `MATURITY_BETA`, release `v0.9.0`, and
+  `$plugin->requires` bumped to the verified Moodle 5.2 floor (`2026042000`,
+  PHP 8.3) instead of the never-tested 5.1 / PHP 8.2 claim.
+
 ## v0.8.1 — 2026-06-16 (Phase 8: protect a populated wrap)
 
 Closes a data-safety hole in the P7 wrap: a re-materialize is a supported flow

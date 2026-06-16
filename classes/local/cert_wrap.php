@@ -137,7 +137,8 @@ class cert_wrap {
         }
         return 'Re-materialize refused: rebuilding would delete a populated cert-chain wrap — '
             . implode('; ', $reasons)
-            . '. Clear the allocations/assignments or detach the program/certification, then retry.';
+            . '. Clear the allocations/assignments or detach the program/certification, then edit'
+            . ' and re-approve the job to rebuild. The existing course is left live and unchanged.';
     }
 
     /**

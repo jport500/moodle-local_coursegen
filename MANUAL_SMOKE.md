@@ -120,11 +120,14 @@ then materialize a job (steps 1–4).
   Exactly **one** program and **one** certification with that idnumber remain — no
   duplicates, no stranded artifacts.
 - [ ] **Populated-wrap protection:** now allocate a learner to the program (configure
-  an allocation source and allocate a user), then reopen + re-approve to re-run
-  materialize. It is **refused** — the job goes to FAILED with a `coursegen_log`
-  reason naming the program and the allocation count, and the existing course,
-  program, certification and the learner's allocation are **all still there**. Clear
-  the allocation (or detach the program) to rebuild again.
+  an allocation source and allocate a user), then edit + re-approve to re-run
+  materialize. It is **refused** — the job **stays COMPLETE** (the live course is
+  untouched) with a `coursegen_log` row (outcome `failure`) naming the program and
+  the allocation count, and the existing course, program, certification and the
+  learner's allocation are **all still there**.
+- [ ] **Retry after clearing:** clear the allocation (or detach the program), then
+  edit + re-approve again — the wrap is now empty, so the rebuild proceeds and the
+  course/program/certification are rebuilt fresh.
 - [ ] No learners are auto-enrolled — the wrap builds containers only.
 
 ## 8. Spend cap (optional, destructive to the period total)

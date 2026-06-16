@@ -142,23 +142,33 @@ final class review_gate_test extends \advanced_testcase {
     }
 
     /**
-     * Reopening an approved job sends it back to awaiting_review; others untouched.
+     * Editing an approved OR a completed job sends it back to awaiting_review (so
+     * the change is re-approved and re-materialized); other states are untouched.
      *
      * @return void
      */
-    public function test_reopen_if_approved(): void {
+    public function test_reopen_for_reedit(): void {
         global $DB;
         $this->resetAfterTest();
 
         $approved = $this->job('outlinefirst', job_manager::STATUS_APPROVED);
-        review_gate::reopen_if_approved($approved, (int) $approved->userid);
+        review_gate::reopen_for_reedit($approved, (int) $approved->userid);
         $this->assertSame(
             job_manager::STATUS_AWAITING_REVIEW,
             $DB->get_field('coursegen_job', 'status', ['id' => $approved->id])
         );
 
+        // A completed job reopens too, so an edit can re-drive a rebuild (D18).
+        $complete = $this->job('outlinefirst', job_manager::STATUS_COMPLETE);
+        review_gate::reopen_for_reedit($complete, (int) $complete->userid);
+        $this->assertSame(
+            job_manager::STATUS_AWAITING_REVIEW,
+            $DB->get_field('coursegen_job', 'status', ['id' => $complete->id])
+        );
+
+        // A job already awaiting review is left as-is.
         $awaiting = $this->job('outlinefirst', job_manager::STATUS_AWAITING_REVIEW);
-        review_gate::reopen_if_approved($awaiting, (int) $awaiting->userid);
+        review_gate::reopen_for_reedit($awaiting, (int) $awaiting->userid);
         $this->assertSame(
             job_manager::STATUS_AWAITING_REVIEW,
             $DB->get_field('coursegen_job', 'status', ['id' => $awaiting->id])

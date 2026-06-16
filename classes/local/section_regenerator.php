@@ -116,7 +116,7 @@ class section_regenerator {
 
         blueprint_store::save_new_version($job, $rebuilt, $userid);
         $DB->set_field('coursegen_job', 'estimatedspend', $rebuilt->estimate_units(), ['id' => $job->id]);
-        review_gate::reopen_if_approved($job, $userid);
+        review_gate::reopen_for_reedit($job, $userid);
         return true;
     }
 

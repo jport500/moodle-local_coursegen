@@ -114,16 +114,22 @@ class review_gate {
     }
 
     /**
-     * Reopen review when an edit/regeneration changes an already-approved job,
-     * so no approved job ever points at an unreviewed version (the changed
-     * content must be re-approved).
+     * Reopen review when an edit/regeneration changes a job that has already been
+     * approved or materialized, so the changed content must be re-approved before
+     * it takes effect. Covers both APPROVED (no approved job points at an
+     * unreviewed version) and COMPLETE (an edit to a built course re-drives it
+     * through review → re-approval → re-materialize; without this the saved edit
+     * would never reach the live course).
      *
      * @param \stdClass $job The coursegen_job row.
      * @param int $userid The editing user.
      * @return void
      */
-    public static function reopen_if_approved(\stdClass $job, int $userid): void {
-        if ($job->status === job_manager::STATUS_APPROVED) {
+    public static function reopen_for_reedit(\stdClass $job, int $userid): void {
+        if (
+            $job->status === job_manager::STATUS_APPROVED
+                || $job->status === job_manager::STATUS_COMPLETE
+        ) {
             self::transition(
                 $job,
                 job_manager::STATUS_AWAITING_REVIEW,

@@ -487,11 +487,22 @@ re-materialize is a supported flow (a post-approval section edit reopens the job
 silently wipe an admin's allocation configuration and the cohort's access. So:
 before any destructive cleanup, `materialize()` calls
 `cert_wrap::populated_block_reason($job)`; if the job's program has any allocations
-or its certification has any assignments, the job is **refused** — set to FAILED via
-a new non-destructive `materializer::refuse()` (status + audit, **no cleanup**), with
-an actionable reason naming the program/certification and the counts. An absent or
-empty wrap returns null, so the authoring-retry case keeps the D17 delete-and-rebuild
-unchanged. v1 is refuse-only; it does NOT build reuse-and-re-point.
+or its certification has any assignments, the job is **refused** via a new
+non-destructive `materializer::refuse()` (audit + the caller's false return, **no
+cleanup**), with an actionable reason naming the program/certification and the counts.
+An absent or empty wrap returns null, so the authoring-retry case keeps the D17
+delete-and-rebuild unchanged. v1 is refuse-only; it does NOT build reuse-and-re-point.
+
+**Refusal leaves the job COMPLETE, not FAILED (amended P9).** The previously-built
+course is live and serving the allocated cohort, so the job is genuinely complete —
+marking it FAILED would misrepresent a healthy course and, worse, strand the admin:
+`approve()` requires `awaiting_review` and the reopen requires `approved`/`complete`,
+so nothing re-drives a FAILED job. `refuse()` therefore sets `COMPLETE` and surfaces
+the reason only through the §10.2 audit log (outcome `failure`) and the false return.
+To make the promised retry real, the reopen was broadened (P9): `review_gate::
+reopen_for_reedit` (renamed from `reopen_if_approved`) now reopens from `complete` as
+well as `approved`, so editing/re-approving a built course re-drives materialize —
+clearing the allocations then editing + re-approving rebuilds with an empty wrap.
 
 - **Guard placement.** Predicate in `cert_wrap` (it owns the idnumber and the
   program/certification lookup); enforcement in `materializer::materialize()` BEFORE
@@ -519,3 +530,27 @@ through `fail()` (would run cleanup and destroy the wrap it is meant to protect)
 **Revisit if.** Re-materializing a populated wrap becomes a common need — then build
 reuse-and-re-point (swap the program's course item to the rebuilt course in place,
 preserving allocations) rather than refusing; or gate on source configuration too.
+
+---
+
+## D19 — Pre-pilot release posture: beta, declared floor matches what is verified (P9)
+
+**Decision.** For the pilot the plugin is marked `MATURITY_BETA`, release `v0.9.0`
+(GA would be `v1.0.0`), and `$plugin->requires` is bumped from the unverified Moodle
+5.1 floor (`2025092600`) to **`2026042000` (Moodle 5.2)** — the only version ever run.
+PHP 8.3 is the verified runtime. The code uses no 5.2-only APIs, so 5.1/PHP 8.2 may
+well work, but the declared floor reflects what has actually been tested rather than an
+unverified compatibility promise.
+
+**Why.** Feature-complete and entering a pilot is the definition of beta. A plugin
+should not advertise a Moodle/PHP floor it has never been exercised against; the pilot
+runs on 5.2.1/PHP 8.3, so the honest, low-risk choice is to declare that and widen the
+floor later only if a real 5.1/PHP 8.2 test pass substantiates it.
+
+**Rejected.** Staying `MATURITY_ALPHA` (understates readiness for a pilot); keeping the
+5.1 floor untested (an unverified support claim); testing on a real 5.1/PHP 8.2 box now
+(no such environment, and not worth blocking the pilot for).
+
+**Revisit if.** A 5.1/PHP 8.2 environment is stood up and the suite passes there (lower
+the floor back); or the pilot succeeds and the plugin goes GA (`v1.0.0`,
+`MATURITY_STABLE`).

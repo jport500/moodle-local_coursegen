@@ -33,6 +33,7 @@ use local_coursegen\local\blueprint_store;
 use local_coursegen\local\cert_wrap;
 use local_coursegen\local\job_manager;
 use local_coursegen\local\materializer;
+use local_coursegen\local\review_gate;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 defined('MOODLE_INTERNAL') || die();
@@ -387,8 +388,9 @@ final class materializer_test extends \advanced_testcase {
         ob_end_clean();
 
         $this->assertFalse($ok, 'Re-materialize was not refused.');
+        // The live course is unchanged, so the job stays COMPLETE — not FAILED (D18).
         $this->assertSame(
-            job_manager::STATUS_FAILED,
+            job_manager::STATUS_COMPLETE,
             $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
         );
 
@@ -411,6 +413,27 @@ final class materializer_test extends \advanced_testcase {
             'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
             ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%Re-materialize refused%']
         ));
+
+        // Retry path: the admin clears the allocation, then edits + re-approves —
+        // the wrap is now empty, so the rebuild proceeds (D18).
+        $DB->delete_records('tool_muprog_allocation', ['programid' => $program->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        review_gate::reopen_for_reedit($job, 2); // COMPLETE -> awaiting_review.
+        $this->assertSame(job_manager::STATUS_AWAITING_REVIEW, $job->status);
+        review_gate::approve($job, 2);            // Awaiting_review -> approved.
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $secondcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+        $this->assertNotEquals($firstcourse, $secondcourse, 'The rebuild did not replace the course.');
+        $this->assertFalse($DB->record_exists('course', ['id' => $firstcourse]));
+        $this->assertSame(
+            job_manager::STATUS_COMPLETE,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+        // The wrap was rebuilt fresh: exactly one program and one certification.
+        $this->assertEquals(1, $DB->count_records('tool_muprog_program', ['idnumber' => $idnumber]));
+        $this->assertEquals(1, $DB->count_records('tool_mucertify_certification', ['idnumber' => $idnumber]));
     }
 
     /**

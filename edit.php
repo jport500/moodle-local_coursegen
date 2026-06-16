@@ -122,8 +122,8 @@ if ($form->is_cancelled()) {
     }
     blueprint_store::save_new_version($job, $edited, $USER->id);
     $DB->set_field('coursegen_job', 'estimatedspend', $edited->estimate_units(), ['id' => $job->id]);
-    // An edit to an already-approved job sends it back for re-approval (item 3).
-    review_gate::reopen_if_approved($job, $USER->id);
+    // An edit to an approved or already-built job sends it back for re-approval.
+    review_gate::reopen_for_reedit($job, $USER->id);
 
     if (!empty($submitted->approvebutton) && $job->status === job_manager::STATUS_AWAITING_REVIEW) {
         review_gate::approve($job, $USER->id);

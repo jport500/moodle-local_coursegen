@@ -664,15 +664,19 @@ PROMPT;
     }
 
     /**
-     * Refuse the job WITHOUT any cleanup, so the existing course, program and
-     * certification are left intact (D18). Use only before anything destructive.
+     * Refuse the rebuild WITHOUT any cleanup, leaving the existing course,
+     * program and certification intact (D18). The previously-built course is live
+     * and serving the allocated cohort, so the job is genuinely COMPLETE, not
+     * failed — the refusal is surfaced through the audit log and the caller's
+     * false return, not a misleading FAILED status. Use only before anything
+     * destructive runs.
      *
      * @param \stdClass $job The job.
      * @param string $reason Non-sensitive, actionable reason.
      * @return void
      */
     private function refuse(\stdClass $job, string $reason): void {
-        $this->set_status($job, job_manager::STATUS_FAILED);
+        $this->set_status($job, job_manager::STATUS_COMPLETE);
         $this->log($job, null, null, null, null, null, null, null, $reason, audit_log::FAILURE);
         mtrace("local_coursegen: materialize job {$job->id} refused: {$reason}");
     }
