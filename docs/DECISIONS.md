@@ -1,0 +1,242 @@
+# local_coursegen — Architectural Decisions
+
+Decision records for the LMS Light AI course-builder plugin. Each entry
+states the decision, why, what was rejected, and the conditions that would
+make us reconsider. This is a point-in-time record from v1.0 design and
+should be appended to (not rewritten) as the plugin evolves.
+
+Read `github.com/jport500/lms-light-docs/blob/main/CONTEXT.md` first for
+the product, deployment model, and conventions these decisions assume.
+
+---
+
+## D1 — Build as a native Moodle plugin, not an external app behind LTI
+
+**Decision.** Course generation is a native Moodle `local` plugin that
+builds real Moodle courses inside the tenant. It is not a standalone
+application that hosts content and serves it into Moodle via LTI.
+
+**Why.** LMS Light's moat is a managed, isolated, per-tenant Moodle where
+the content, the learner experience, and the data stay in-tenant, and
+where training composes with the native stack (format_pathway, muprog,
+mucertify, gradebook, completion). An external app would move the
+experience and data out of the tenant onto a central multi-tenant service,
+reintroducing the cross-tenant isolation burden the one-instance-per-tenant
+model deliberately avoids, forcing a rebuild of program/cert/progress
+features that already exist in MuTMS, and standing up a second product to
+operate, secure, and certify. The native plugin rides infrastructure we
+already run and reinforces the differentiator Honen structurally cannot
+match.
+
+**Rejected.** Standalone app + LTI 1.3 tool (the Honen architecture).
+Genuinely better only if the goal is to be an LMS-agnostic course-building
+*vendor* selling to customers on their own LMS — a different company than
+the managed-Moodle service.
+
+**Revisit if.** The strategy shifts from "feature of LMS Light" to
+"horizontal course-building product sold to non-Moodle customers." Even
+then, see D9 — Moodle-as-LTI-provider may serve that need without an
+external app.
+
+---
+
+## D2 — Its own plugin (`local_coursegen`), separate from the planned AI agent plugin
+
+**Decision.** Course building ships as its own plugin with a clean public
+API, not folded into the planned in-Moodle AI agent plugin.
+
+**Why.** Different lifecycle (authoring-time vs runtime), different audience
+(instructor/admin vs learner-inclusive), and different capability surface
+(course-creation rights vs conversational assistance). The agent is still
+unscoped; anchoring a shippable plugin to an undesigned one imports its
+uncertainty. One-repo-per-plugin and clean per-phase history favour
+separation. The compelling "conversational course building" UX is achieved
+later by the agent calling `local_coursegen`'s public API at runtime — the
+welcomeemail → `auth_magiclink\api` pattern — which gives the UX without
+the coupling.
+
+**Rejected.** Folding into the AI agent plugin. Shared AI plumbing is a
+candidate for a thin extracted library *if* duplication emerges once the
+agent is built — not a reason to fuse two features now.
+
+**Revisit if.** Real, substantial code duplication appears between this and
+the agent plugin; extract a shared library at that point rather than
+merging the plugins.
+
+---
+
+## D3 — Configurable generation modes, with draft-by-default as a safety rail
+
+**Decision.** Support both outline-first (instructor reviews/edits the
+generated blueprint, then approves materialization) and fully automatic
+(straight through). Mode is a per-tenant default with a per-run override;
+admins can lock it. Regardless of mode, generation always lands in a
+**hidden/draft** course.
+
+**Why.** Both modes have real demand; the pipeline supports them with one
+reviewable checkpoint between *plan* and *materialize*. Draft-by-default
+ensures unreviewed AI content never reaches learners silently — a rail, not
+a gate — consistent with LMS Light's supervised ethos and severity
+calibration.
+
+**Rejected.** Outline-first only (too rigid for power users) and automatic
+only (ships unreviewed content into live courses).
+
+**Revisit if.** Operators report the draft step is friction with no payoff
+in a trusted high-volume workflow; could offer an admin-gated "publish on
+generate" for specific roles.
+
+---
+
+## D4 — v1 output is text + image; other formats deferred
+
+**Decision.** v1 generates learning objectives, structured reading
+(page/book), quizzes (via quizgenpro), flashcards, and AI-generated images
+(diagrams/illustrations). Audio/podcasts, video, comics, music, games, and
+a real-time AI tutor are out of scope for v1.
+
+**Why.** Moodle's AI subsystem is provider-pluggable, so format choice is a
+product/cost/quality call, not a constraint. Text and image are mature,
+cheap, fast, and directly valuable for B2B SaaS training and cert/CE.
+Audio/video are heavier and pricier; comics/music/games are
+consumer/K-12-flavoured and off-ICP. Scope discipline beats feature parity
+with Honen.
+
+**Rejected.** Chasing all ten Honen formats. Now technically possible, but
+cost, latency, generation quality, and ICP fit argue against most of them.
+
+**Revisit if.** A target customer needs audio narration for compliance/CE
+or accessibility; TTS is the most likely first addition.
+
+---
+
+## D5 — All AI via Moodle's AI Providers subsystem, bound to capability tiers
+
+**Decision.** Every AI call routes through Moodle's native AI Providers
+subsystem. The plugin declares the *capability tier* each step needs —
+`reasoning` (blueprint), `drafting` (bulk section content), `image`
+(visuals) — and the tenant maps each tier to an actual provider/model.
+Quiz/question generation is delegated to local_quizgenpro's API and uses
+its own provider config.
+
+**Why.** Honours the LMS Light AI integration standard (no direct LLM
+calls), keeps the plugin provider-agnostic and portable, and enables
+per-tenant provider/region selection — a data-residency selling point.
+Tiering puts the expensive strong model only where leverage is highest
+(the blueprint) and a cheaper model on high-volume drafting. Delegating
+quizzes avoids duplicating quizgenpro and keeps one source of truth.
+
+**Rejected.** Direct LLM integration (violates the standard, loses
+per-tenant config); a single model for everything (wastes spend on bulk
+drafting or underpowers the blueprint); reimplementing quiz generation.
+
+**Revisit if.** AI Providers in the target Moodle version lacks an action
+we need (e.g., image generation not exposed); fall back to the nearest
+supported action and document the gap, do not bypass the subsystem.
+
+---
+
+## D6 — Source ingestion: documents + topic prompt; structure-aware chunking; no vector store in v1
+
+**Decision.** v1 accepts PDF, DOCX, PPTX, pasted text/markdown, and a bare
+topic prompt. Text extraction runs in an async task using established PHP
+libraries. Chunking is structure-aware (split on headings/sections) with a
+map-reduce pass to build the outline when the corpus exceeds context, and
+section-relevant chunks passed to content generation. A normalized "source
+corpus" (extracted text + structure metadata) is the input to generation.
+
+**Why.** These formats cover the overwhelming majority of corporate/cert
+source material. Structure-aware chunking preserves pedagogy; map-reduce
+handles large inputs without a vector store. Keeping v1 free of a vector
+dependency reduces operational surface.
+
+**Rejected.** Vector RAG over a per-tenant store (deferred — adds infra;
+revisit when corpora regularly exceed what map-reduce handles well);
+audio/video transcription and URL scraping (deferred — extra provider
+capability / quality and legal questions).
+
+**Revisit if.** Source corpora routinely get large enough that map-reduce
+quality degrades, or customers want to point at a media library; add
+retrieval/RAG and transcription as a v1.x capability.
+
+---
+
+## D7 — Per-tenant generation cost/quota governance with audit logging
+
+**Decision.** The plugin tracks generation spend per tenant (distinct from
+tool_mutrain learner credits): a pre-generation estimate surfaced at the
+blueprint stage, a soft-warning threshold, a hard cap admins can raise, and
+a per-generation audit log (who, what, provider/model, estimated cost).
+Image generation is opt-in per section with its own sub-cap. All stored in
+standard config/tables for automatic per-tenant isolation.
+
+**Why.** Generative spend is real and uneven (image >> text). Estimating at
+the blueprint stage pairs naturally with the human gate. Audit logging fits
+the credential/audit discipline and becomes the substrate for usage-based
+billing later.
+
+**Rejected.** No governance (uncontrolled spend); reusing tool_mutrain
+(that's learner-facing credits, wrong layer).
+
+**Revisit if.** LMS Light wants to bill customers for generation — the log
+is the substrate, but billing itself is a separate future build.
+
+---
+
+## D8 — The course blueprint is a first-class, persisted artifact
+
+**Decision.** The generated plan (sections, objectives, per-section content
+types, assessment spec, per-section image flags, status) is a stored,
+editable artifact, not a throwaway intermediate.
+
+**Why.** It is the IR that makes both generation modes possible, enables
+cost estimation before materialization, supports per-section regeneration
+and editing, and gives the instructor something concrete to review and
+approve.
+
+**Rejected.** Generating straight from source to course with no inspectable
+intermediate (kills the review gate, estimation, and partial regeneration).
+
+**Revisit if.** Never expected; this is foundational.
+
+---
+
+## D9 — Distribution via Moodle-as-LTI-provider (`enrol_lti`) is parked, not built
+
+**Decision.** Serving generated courses out to remote LMSes via Moodle's
+LTI provider capability (`enrol_lti`, "Publish as LTI tool") is documented
+as a future option and is not in v1 scope. It is orthogonal to
+local_coursegen and requires no change to it.
+
+**Why.** It gives LMS-agnostic reach while keeping content, experience, and
+data in the tenant — the opposite trade-off from an external app, and a
+viable second go-to-market mode. But it acts on courses after they exist;
+coursegen builds them. Build and publish are cleanly separable.
+
+**Rejected.** Designing v1 around it (premature; unverified provider-side
+maturity and multi-tenancy behaviour).
+
+**Revisit if.** LMS Light pursues a "serve our courses into your existing
+LMS" motion. First verify LTI 1.3 provider maturity in the target Moodle
+version, enrol_lti behaviour inside a tool_mutenancy tenant, shadow-account
+provisioning implications, and the grade record-of-truth question.
+
+---
+
+## D10 — Compose with the existing stack
+
+**Decision.** Generated courses default to the format_pathway course
+format; assessments go through local_quizgenpro's API; wrapping a generated
+course into a tool_muprog program and/or tool_mucertify certification is an
+optional toggle, not core v1.
+
+**Why.** format_pathway is the ICP-aligned delivery target and embeds
+cleanly (relevant to D9). quizgenpro already does assessment generation.
+Program/cert wrapping is valuable for the niche-operator ICP but adds scope;
+making it optional keeps v1 focused while leaving the path open.
+
+**Rejected.** Building bespoke delivery/assessment/program features inside
+coursegen (duplicates the stack, against CONTEXT.md).
+
+**Revisit if.** Program/cert wrapping proves to be a default expectation for
+the cert/CE ICP; promote it from optional toggle to a first-class step.
