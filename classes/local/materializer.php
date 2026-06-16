@@ -109,6 +109,15 @@ class materializer {
             return false;
         }
 
+        // Refuse rather than destroy a populated cert-chain wrap on re-materialize
+        // (D18). This runs BEFORE any cleanup so a refusal leaves the existing
+        // course, program and certification fully intact.
+        $blocker = (new cert_wrap())->populated_block_reason($job);
+        if ($blocker !== null) {
+            $this->refuse($job, $blocker);
+            return false;
+        }
+
         // Drop any half-built course from a prior attempt before rebuilding.
         $this->cleanup_partial_course($job);
 
@@ -652,6 +661,20 @@ PROMPT;
         $this->set_status($job, job_manager::STATUS_FAILED);
         $this->log($job, null, null, null, null, null, null, null, $reason, audit_log::FAILURE);
         mtrace("local_coursegen: materialize job {$job->id} failed: {$reason}");
+    }
+
+    /**
+     * Refuse the job WITHOUT any cleanup, so the existing course, program and
+     * certification are left intact (D18). Use only before anything destructive.
+     *
+     * @param \stdClass $job The job.
+     * @param string $reason Non-sensitive, actionable reason.
+     * @return void
+     */
+    private function refuse(\stdClass $job, string $reason): void {
+        $this->set_status($job, job_manager::STATUS_FAILED);
+        $this->log($job, null, null, null, null, null, null, null, $reason, audit_log::FAILURE);
+        mtrace("local_coursegen: materialize job {$job->id} refused: {$reason}");
     }
 
     /**

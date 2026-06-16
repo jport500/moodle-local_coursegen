@@ -472,3 +472,50 @@ shipping the arbitrary 1000000 cap default.
 wrap time); or recertification is wanted (set `programid2`/`recertify` on the
 certification); or the wrap should move out of materialize into an explicit,
 separately-triggered finalize action.
+
+---
+
+## D18 — Re-materialize refuses rather than destroy a populated wrap (P8)
+
+**Decision.** The D17 "cleanup removes prior, rebuild fresh" path is destructive:
+`tool_muprog\local\program::delete` hard-cascades — it deletes every
+`tool_muprog_allocation` row and tears down the muprog enrolment instances — and
+`tool_mucertify\local\certification::delete` deletes every
+`tool_mucertify_assignment` row; neither refuses or requires archiving first. Since
+re-materialize is a supported flow (a post-approval section edit reopens the job to
+`awaiting_review`, and re-approving re-runs materialize), an unguarded rebuild would
+silently wipe an admin's allocation configuration and the cohort's access. So:
+before any destructive cleanup, `materialize()` calls
+`cert_wrap::populated_block_reason($job)`; if the job's program has any allocations
+or its certification has any assignments, the job is **refused** — set to FAILED via
+a new non-destructive `materializer::refuse()` (status + audit, **no cleanup**), with
+an actionable reason naming the program/certification and the counts. An absent or
+empty wrap returns null, so the authoring-retry case keeps the D17 delete-and-rebuild
+unchanged. v1 is refuse-only; it does NOT build reuse-and-re-point.
+
+- **Guard placement.** Predicate in `cert_wrap` (it owns the idnumber and the
+  program/certification lookup); enforcement in `materializer::materialize()` BEFORE
+  `cleanup_partial_course()`, so a refusal leaves course + program + certification
+  fully intact — no half-torn-down state. The existing `fail()` is unusable here
+  because it calls `cleanup_partial_course()` (which would destroy the wrap); hence
+  the separate `refuse()`.
+- **Predicate.** No public muprog "has allocations" helper exists; the canonical
+  signal is the very table `delete()` wipes — `count_records('tool_muprog_allocation',
+  ['programid' => …]) > 0` and `count_records('tool_mucertify_assignment',
+  ['certificationid' => …]) > 0`. All rows count (including archived — still data the
+  delete would lose).
+
+**Why.** Destroy-and-rebuild was correct for an empty, disposable wrap but wrong once
+an admin has invested configuration into it — and the wrap ICP is exactly who will.
+Refusing is a safe, reversible v1: the admin clears allocations or detaches the
+program, then retries. Reuse-and-re-point (keep the populated program, swap its course
+content to the rebuilt course) is more surface than this data-safety fix warrants now.
+
+**Rejected.** Leaving D17 as-is (silent data loss); reuse-and-re-point in v1 (scope);
+gating on configured sources without learners too (broader than the stated
+allocations/assignments predicate — a possible later tightening); putting the refusal
+through `fail()` (would run cleanup and destroy the wrap it is meant to protect).
+
+**Revisit if.** Re-materializing a populated wrap becomes a common need — then build
+reuse-and-re-point (swap the program's course item to the rebuilt course in place,
+preserving allocations) rather than refusing; or gate on source configuration too.

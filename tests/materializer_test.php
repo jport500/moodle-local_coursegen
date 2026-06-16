@@ -30,6 +30,7 @@ use local_coursegen\local\ai\stub_text_client;
 use local_coursegen\local\ai\text_result;
 use local_coursegen\local\blueprint;
 use local_coursegen\local\blueprint_store;
+use local_coursegen\local\cert_wrap;
 use local_coursegen\local\job_manager;
 use local_coursegen\local\materializer;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -332,6 +333,84 @@ final class materializer_test extends \advanced_testcase {
             job_manager::STATUS_COMPLETE,
             $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
         );
+    }
+
+    /**
+     * A re-materialize against a populated wrap is refused, leaving the existing
+     * course, program, certification and the learner's allocation intact (D18).
+     *
+     * @return void
+     */
+    public function test_populated_wrap_refuses_rematerialize(): void {
+        global $DB;
+        if (!cert_wrap::program_available() || !cert_wrap::certification_available()) {
+            $this->markTestSkipped('tool_muprog / tool_mucertify not available.');
+        }
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 1, 'local_coursegen');
+        $job = $this->approved_job_with([
+            ['title' => 'Only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        // First materialize builds the course and the wrap.
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $firstcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+        $idnumber = cert_wrap::IDNUMBER_PREFIX . $job->id;
+        $program = $DB->get_record('tool_muprog_program', ['idnumber' => $idnumber], '*', MUST_EXIST);
+        $cert = $DB->get_record('tool_mucertify_certification', ['idnumber' => $idnumber], '*', MUST_EXIST);
+
+        // An admin allocates a learner to the program (populating it).
+        $learner = $this->getDataGenerator()->create_user();
+        $now = time();
+        $DB->insert_record('tool_muprog_allocation', (object) [
+            'programid' => $program->id,
+            'userid' => $learner->id,
+            'sourceid' => 0,
+            'archived' => 0,
+            'timeallocated' => $now,
+            'timestart' => $now,
+            'calendarupdated' => 0,
+            'itemscompleted' => 0,
+            'timecreated' => $now,
+        ]);
+
+        // A post-edit reopen re-runs materialize: it must refuse, not rebuild.
+        $DB->set_field('coursegen_job', 'status', job_manager::STATUS_APPROVED, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        ob_start(); // The refusal emits an mtrace line.
+        $ok = (new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job);
+        ob_end_clean();
+
+        $this->assertFalse($ok, 'Re-materialize was not refused.');
+        $this->assertSame(
+            job_manager::STATUS_FAILED,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+
+        // Nothing was destroyed: course, program, certification, allocation all intact.
+        $this->assertTrue(
+            $DB->record_exists('course', ['id' => $firstcourse]),
+            'The existing course was deleted by a refused re-materialize.'
+        );
+        $this->assertTrue($DB->record_exists('tool_muprog_program', ['id' => $program->id]));
+        $this->assertTrue($DB->record_exists('tool_mucertify_certification', ['id' => $cert->id]));
+        $this->assertEquals(
+            1,
+            $DB->count_records('tool_muprog_allocation', ['programid' => $program->id]),
+            'The learner allocation was wiped.'
+        );
+
+        // The refusal is audited with an actionable reason.
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
+            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%Re-materialize refused%']
+        ));
     }
 
     /**

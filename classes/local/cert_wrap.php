@@ -97,6 +97,50 @@ class cert_wrap {
     }
 
     /**
+     * Why a re-materialize must be refused, or null if cleanup is safe.
+     *
+     * A wrap is disposable only while empty: this plugin's cleanup deletes the
+     * program/certification by idnumber, and tool_muprog/tool_mucertify delete
+     * hard-cascades learner allocations/assignments (and tears down enrolments).
+     * So if an admin has populated the wrap, rebuilding would silently wipe their
+     * configuration and the cohort's access — refuse instead (D18).
+     *
+     * @param \stdClass $job The coursegen job.
+     * @return string|null An actionable reason, or null if absent/empty (safe).
+     */
+    public function populated_block_reason(\stdClass $job): ?string {
+        global $DB;
+        $idnumber = self::IDNUMBER_PREFIX . $job->id;
+        $reasons = [];
+
+        if (self::program_available()) {
+            $program = $DB->get_record('tool_muprog_program', ['idnumber' => $idnumber]);
+            if ($program) {
+                $allocations = $DB->count_records('tool_muprog_allocation', ['programid' => $program->id]);
+                if ($allocations > 0) {
+                    $reasons[] = "program \"{$program->fullname}\" (id {$program->id}) has {$allocations} learner allocation(s)";
+                }
+            }
+        }
+        if (self::certification_available()) {
+            $cert = $DB->get_record('tool_mucertify_certification', ['idnumber' => $idnumber]);
+            if ($cert) {
+                $assignments = $DB->count_records('tool_mucertify_assignment', ['certificationid' => $cert->id]);
+                if ($assignments > 0) {
+                    $reasons[] = "certification \"{$cert->fullname}\" (id {$cert->id}) has {$assignments} learner assignment(s)";
+                }
+            }
+        }
+
+        if (!$reasons) {
+            return null;
+        }
+        return 'Re-materialize refused: rebuilding would delete a populated cert-chain wrap — '
+            . implode('; ', $reasons)
+            . '. Clear the allocations/assignments or detach the program/certification, then retry.';
+    }
+
+    /**
      * Remove any program/certification this job created (retry idempotency).
      * Certification first, then program — the certification FK points at it.
      *
@@ -129,7 +173,7 @@ class cert_wrap {
      * @param \context_coursecat $context The category context.
      * @return \stdClass The program record.
      */
-    private function ensure_program(\stdClass $job, \stdClass $course, \context_coursecat $context): \stdClass {
+    protected function ensure_program(\stdClass $job, \stdClass $course, \context_coursecat $context): \stdClass {
         global $DB;
         $idnumber = self::IDNUMBER_PREFIX . $job->id;
 
@@ -160,7 +204,7 @@ class cert_wrap {
      * @param int $programid The program to certify.
      * @return \stdClass The certification record.
      */
-    private function ensure_certification(
+    protected function ensure_certification(
         \stdClass $job,
         \stdClass $course,
         \context_coursecat $context,

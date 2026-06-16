@@ -211,6 +211,111 @@ final class cert_wrap_test extends \advanced_testcase {
     }
 
     /**
+     * The populated-block predicate is null when no wrap exists or it is empty.
+     *
+     * @return void
+     */
+    public function test_populated_block_reason_null_when_empty(): void {
+        $this->resetAfterTest();
+        [$job, $course, $context] = $this->scenario();
+        $wrap = new cert_wrap();
+
+        // No wrap yet.
+        $this->assertNull($wrap->populated_block_reason($job));
+
+        // Wrapped but unpopulated — still safe to rebuild.
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 1, 'local_coursegen');
+        $wrap->wrap($job, $course, $context);
+        $this->assertNull($wrap->populated_block_reason($job));
+    }
+
+    /**
+     * A learner allocation on the program makes the predicate return a reason
+     * that names the program and the count.
+     *
+     * @return void
+     */
+    public function test_populated_block_reason_detects_allocation(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [$job, $course, $context] = $this->scenario();
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 0, 'local_coursegen');
+        $wrap = new cert_wrap();
+        $wrap->wrap($job, $course, $context);
+
+        $idnumber = cert_wrap::IDNUMBER_PREFIX . $job->id;
+        $program = $DB->get_record('tool_muprog_program', ['idnumber' => $idnumber], '*', MUST_EXIST);
+        $learner = $this->getDataGenerator()->create_user();
+        $now = time();
+        $DB->insert_record('tool_muprog_allocation', (object) [
+            'programid' => $program->id, 'userid' => $learner->id, 'sourceid' => 0, 'archived' => 0,
+            'timeallocated' => $now, 'timestart' => $now, 'calendarupdated' => 0,
+            'itemscompleted' => 0, 'timecreated' => $now,
+        ]);
+
+        $reason = $wrap->populated_block_reason($job);
+        $this->assertNotNull($reason);
+        $this->assertStringContainsString((string) $program->id, $reason);
+        $this->assertStringContainsString('1 learner allocation', $reason);
+    }
+
+    /**
+     * Best-effort: when the certification step throws after the program is created,
+     * the wrap surfaces the partial (program kept, warning logged) and does not
+     * propagate the exception — so the caller still completes the job.
+     *
+     * @return void
+     */
+    public function test_best_effort_partial_when_certification_fails(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [$job, $course, $context] = $this->scenario();
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 1, 'local_coursegen');
+
+        $wrap = new class extends cert_wrap {
+            /**
+             * Force the certification step to fail after the program is created.
+             *
+             * @param \stdClass $job The job.
+             * @param \stdClass $course The course.
+             * @param \context_coursecat $context The category context.
+             * @param int $programid The program id.
+             * @return \stdClass Never returns.
+             */
+            protected function ensure_certification(
+                \stdClass $job,
+                \stdClass $course,
+                \context_coursecat $context,
+                int $programid
+            ): \stdClass {
+                throw new \RuntimeException('forced certification failure');
+            }
+        };
+
+        ob_start(); // The best-effort warning emits an mtrace line.
+        $wrap->wrap($job, $course, $context); // Must not throw.
+        ob_end_clean();
+
+        $idnumber = cert_wrap::IDNUMBER_PREFIX . $job->id;
+        $this->assertTrue(
+            $DB->record_exists('tool_muprog_program', ['idnumber' => $idnumber]),
+            'The program (created before the failure) was not kept.'
+        );
+        $this->assertFalse($DB->record_exists('tool_mucertify_certification', ['idnumber' => $idnumber]));
+        $this->assertTrue(
+            $DB->record_exists_select(
+                'coursegen_log',
+                'jobid = :jobid AND stage = :stage AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
+                ['jobid' => $job->id, 'stage' => 'wrap', 'outcome' => 'failure', 'detail' => '%certification wrap failed%']
+            ),
+            'The partial wrap failure was not surfaced.'
+        );
+    }
+
+    /**
      * Build a job + a hidden course in a category, plus that category's context.
      *
      * @return array [job, course, context]

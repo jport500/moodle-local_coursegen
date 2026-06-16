@@ -115,9 +115,16 @@ then materialize a job (steps 1–4).
   contains the generated course (Site admin → Programs).
 - [ ] A `tool_mucertify` certification with the same idnumber exists, linked to
   that program (Site admin → Certifications).
-- [ ] **Retry idempotency:** re-run materialize for the same job (e.g. reopen and
-  re-approve, or re-run the task). Exactly **one** program and **one** certification
-  with that idnumber remain — no duplicates, no stranded artifacts.
+- [ ] **Retry idempotency (empty wrap):** re-run materialize for the same job
+  (e.g. reopen and re-approve, or re-run the task) *before* allocating anyone.
+  Exactly **one** program and **one** certification with that idnumber remain — no
+  duplicates, no stranded artifacts.
+- [ ] **Populated-wrap protection:** now allocate a learner to the program (configure
+  an allocation source and allocate a user), then reopen + re-approve to re-run
+  materialize. It is **refused** — the job goes to FAILED with a `coursegen_log`
+  reason naming the program and the allocation count, and the existing course,
+  program, certification and the learner's allocation are **all still there**. Clear
+  the allocation (or detach the program) to rebuild again.
 - [ ] No learners are auto-enrolled — the wrap builds containers only.
 
 ## 8. Spend cap (optional, destructive to the period total)

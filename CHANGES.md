@@ -3,6 +3,31 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.8.1 — 2026-06-16 (Phase 8: protect a populated wrap)
+
+Closes a data-safety hole in the P7 wrap: a re-materialize is a supported flow
+(a post-approval section edit reopens the job and re-approving re-runs
+materialize), and P7's "cleanup removes prior, rebuild fresh" would silently
+delete a program/certification an admin had since populated.
+
+- **Refuse rather than destroy (DECISIONS D18).** `tool_muprog`/`tool_mucertify`
+  `delete()` hard-cascades — it removes all learner allocations/assignments and
+  tears down enrolments — with no refuse and no archive-first. So before any
+  destructive cleanup, `materialize()` now calls
+  `cert_wrap::populated_block_reason()`; if the job's program has any allocations
+  or its certification has any assignments, the job is **refused** (FAILED, audited
+  with an actionable reason naming the program/certification and the counts) via a
+  new non-destructive `materializer::refuse()` — no cleanup, so the existing
+  course, program, certification and allocations are left fully intact.
+- An absent or empty wrap is unaffected: the authoring-retry case keeps the P7
+  delete-and-rebuild behaviour.
+- This is refuse-only for v1; reuse-and-re-point (rebuild while preserving
+  allocations) is a documented later option.
+- **Test gap closed.** Adds the best-effort partial-wrap test the P7 smoke didn't
+  cover: when the certification step throws after the program is created, the wrap
+  keeps the program, logs the partial, and does not propagate — so the job still
+  completes.
+
 ## v0.8.0 — 2026-06-16 (Phase 7: cert-chain wrap)
 
 Wires the optional muprog/mucertify wrap deferred from P6, and fixes the default
