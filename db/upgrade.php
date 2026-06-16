@@ -49,7 +49,7 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         // the stored value is still exactly the untouched old default — never
         // overwrite a cap an administrator deliberately set.
         if ((string) get_config('local_coursegen', 'cap_period_spend') === '50') {
-            set_config('cap_period_spend', '1000000', 'local_coursegen');
+            set_config('cap_period_spend', '500000', 'local_coursegen');
         }
         upgrade_plugin_savepoint(true, 2026061607, 'local', 'coursegen');
     }

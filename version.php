@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026061607;
+$plugin->version = 2026061608;
 $plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
 $plugin->maturity = MATURITY_ALPHA;
 $plugin->release = 'v0.1.0';
@@ -37,4 +37,9 @@ $plugin->dependencies = [
     // Assessed sections are placed as formative knowledge checks (DECISIONS D15).
     'mod_knowledgecheck' => 2026051800,
     'filter_knowledgecheck' => 2026051800,
+    // The tool_muprog / tool_mucertify plugins are deliberately NOT listed: the
+    // cert-chain wrap is optional and off by default, so it must not force the
+    // cert stack onto every tenant. local\cert_wrap soft-checks for them at
+    // runtime and skips with a warning when a toggle is on but the plugin/API is
+    // absent (DECISIONS D17).
 ];

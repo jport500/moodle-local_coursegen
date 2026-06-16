@@ -71,7 +71,7 @@ if ($hassiteconfig) {
         'local_coursegen/cap_period_spend',
         get_string('setting_cap_period_spend', 'local_coursegen'),
         get_string('setting_cap_period_spend_desc', 'local_coursegen'),
-        '1000000',
+        '500000',
         PARAM_INT
     ));
 
@@ -190,5 +190,13 @@ if ($hassiteconfig) {
             get_string('setting_wrap_mucertify_desc', 'local_coursegen'),
             0
         ));
+        // A certification wraps a program, so the program wrap must be on too.
+        if (isset($tools['muprog'])) {
+            $settings->hide_if(
+                'local_coursegen/wrap_mucertify',
+                'local_coursegen/wrap_muprog',
+                'notchecked'
+            );
+        }
     }
 }

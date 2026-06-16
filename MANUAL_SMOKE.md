@@ -106,7 +106,21 @@ This is the behaviour the automated `completion_walkthrough_test` exercises at
 the server layer; step 6 confirms the browser → webservice → completion path that
 the test can't drive.
 
-## 7. Spend cap (optional, destructive to the period total)
+## 7. Cert-chain wrap (optional — needs tool_muprog / tool_mucertify)
+
+In the plugin settings, turn on **Wrap in program** and **Wrap in certification**,
+then materialize a job (steps 1–4).
+
+- [ ] A `tool_muprog` program with idnumber `coursegen-job-<jobid>` exists and
+  contains the generated course (Site admin → Programs).
+- [ ] A `tool_mucertify` certification with the same idnumber exists, linked to
+  that program (Site admin → Certifications).
+- [ ] **Retry idempotency:** re-run materialize for the same job (e.g. reopen and
+  re-approve, or re-run the task). Exactly **one** program and **one** certification
+  with that idnumber remain — no duplicates, no stranded artifacts.
+- [ ] No learners are auto-enrolled — the wrap builds containers only.
+
+## 8. Spend cap (optional, destructive to the period total)
 
 - [ ] Lower `cap_period_spend` below the current period total, then attempt a new
   blueprint/regen/materialize: it is **refused before any AI call** and audited
@@ -138,5 +152,10 @@ the test can't drive.
   action is used. Order your providers deliberately.
 - **Generated courses are always created hidden.** Nothing is exposed to learners
   until an admin reviews and unhides it.
-- **The muprog/mucertify "wrap" toggles are not yet active** (reserved for a
-  future release). Enabling them currently does nothing.
+- **The muprog/mucertify "wrap" toggles build containers, not enrolments.** With
+  "Wrap in program" on, a materialized course is added to a new tool_muprog
+  program; with "Wrap in certification" also on, a certification is linked to that
+  program. Neither allocates learners — configure the program's allocation sources
+  afterwards. "Wrap in certification" requires "Wrap in program" (the UI hides it
+  otherwise). If a toggle is on but tool_muprog/tool_mucertify is absent, the wrap
+  is skipped with a logged warning; the course still builds.

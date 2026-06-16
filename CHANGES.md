@@ -3,6 +3,43 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.8.0 — 2026-06-16 (Phase 7: cert-chain wrap)
+
+Wires the optional muprog/mucertify wrap deferred from P6, and fixes the default
+spend-cap posture carried over from the P6 review.
+
+- **Cert-chain wrap (DECISIONS D17).** New `local\cert_wrap`. At the end of
+  materialization, when `wrap_muprog` is on the generated course is placed in a
+  `tool_muprog` program (`program::create` + `top->append_course`); when
+  `wrap_mucertify` is also on, a single-period `tool_mucertify` certification is
+  created linked to that program (`certification::create` with `programid1`).
+  The wrap builds the container only — learners are not allocated (configure the
+  program's allocation sources afterwards). No AI, so it is outside the spend
+  governor.
+- **Re-entrancy.** Program/certification are keyed by a per-job idnumber
+  (`coursegen-job-{jobid}`, UNIQUE in both tables). `cleanup_partial_course` (the
+  retry's delete-and-rebuild hook) deletes any prior certification then program,
+  so a retry rebuilds course + program + certification fresh and provably never
+  strands or duplicates one; `cert_wrap` also find-or-creates defensively.
+- **Best-effort.** A wrap failure is logged (§10.2 warning + mtrace) and the job
+  still completes — the course is the primary artifact (consistent with the
+  quiz/image skip-and-build precedent, D14).
+- **Toggle dependency.** `wrap_mucertify` is hidden in settings unless
+  `wrap_muprog` is on (`hide_if`), with a runtime guard that skips the
+  certification (and warns) rather than silently creating a program.
+- **Soft dependency.** `tool_muprog`/`tool_mucertify` are NOT hard `requires` in
+  version.php; `cert_wrap` runtime-checks for them (class + version floor
+  2026041950) and skips with a warning when a toggle is on but the plugin is
+  absent. The toggles are relabelled from "not yet active" to active.
+- **Default spend-cap posture (P6 carry-over).** The fresh-install default and the
+  `db/upgrade` heal target for `cap_period_spend` are now both **500000**
+  generation units / 30-day period (≈ 30–100 courses, warns at 80%) — a deliberate
+  bounded default instead of the arbitrary 1000000 left from P4.
+
+Verified on demo2 (5.2.1): phpcs moodle-clean, PHPUnit green, real-transport smoke
+(materialize with both toggles on → a real program containing the course and a
+linked certification; a retry minted no duplicate program or certification).
+
 ## v0.7.0 — 2026-06-16 (Phase 6: finalize & governance)
 
 Makes the plugin releasable: completion verified end-to-end, the spend cap made

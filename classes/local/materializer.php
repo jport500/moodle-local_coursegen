@@ -157,6 +157,9 @@ class materializer {
             $this->create_label($course, $sectionnum, $html, $draftid);
         }
 
+        // Optional, best-effort cert-chain wrap (D17) — never fails the job.
+        (new cert_wrap())->wrap($job, $course, $context);
+
         $this->set_status($job, job_manager::STATUS_COMPLETE);
         return true;
     }
@@ -661,6 +664,10 @@ PROMPT;
      */
     private function cleanup_partial_course(\stdClass $job): void {
         global $DB, $CFG;
+        // Remove any program/certification wrap from a prior attempt (D17) before
+        // rebuilding, so a retry can never strand or duplicate one. Keyed on the
+        // job idnumber, so it runs even when no course id is recorded.
+        (new cert_wrap())->cleanup($job);
         if (empty($job->courseid)) {
             return;
         }

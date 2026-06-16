@@ -413,3 +413,62 @@ set 50); building the cert wrap in P6 (scope/risk in a finalize phase).
 (then blueprint/regen could pre-check an estimate rather than only refusing an
 already-over-cap tenant); or the cert/CE ICP makes the wrap a default expectation
 (promote it from a P7 optional step per D10).
+
+---
+
+## D17 — Cert-chain wrap is built: in-band, best-effort, runtime soft-check (P7)
+
+**Decision.** The `wrap_muprog` / `wrap_mucertify` toggles (D10/D16) are now wired
+via `local\cert_wrap`. At the end of `materialize()`, if `wrap_muprog` is on the
+generated course is placed in a `tool_muprog` program (`program::create` +
+`load_content`/`top->append_course`); if `wrap_mucertify` is also on, a single-
+period `tool_mucertify` certification is created linked to that program
+(`certification::create` with `programid1`). The program/certification are named
+after the course and keyed by a per-job `idnumber` of `coursegen-job-{jobid}`
+(both tables enforce a UNIQUE idnumber). The wrap creates only the container — it
+does **not** allocate or assign learners; an admin configures allocation sources
+afterwards. The wrap is pure orchestration (no AI), so it is outside the spend
+governor.
+
+- **Default cap posture (front-matter fix).** The fresh-install default and the
+  `db/upgrade` heal target for `cap_period_spend` are both set to **500000**
+  generation units / 30-day period (≈ 30–100 courses, warns at 80%) — a deliberate
+  bounded default rather than the arbitrary 1000000 left over from P4. settings.php
+  and the upgrade target agree.
+- **Re-entrancy: in-band, cleanup removes prior.** `cleanup_partial_course()` (the
+  retry's delete-and-rebuild hook) deletes any program/certification with the job's
+  idnumber — certification first, then program (the cert FK points at the program)
+  — so each attempt rebuilds course + program + certification fresh. `cert_wrap`
+  also find-or-creates defensively, so a leftover from an interrupted cleanup is
+  reused, never duplicated.
+- **Failure mode: best-effort.** A wrap failure is logged (§10.2 warning + mtrace)
+  and the job still reaches COMPLETE — the course is the primary artifact (consistent
+  with the quiz/image skip-and-build precedent, D14).
+- **Toggle dependency.** `wrap_mucertify` is hidden in settings unless `wrap_muprog`
+  is on (`hide_if`), and `cert_wrap` skips the certification at runtime if it ever
+  runs without a program — never silently creating a program the admin didn't enable.
+- **Dependency posture.** `tool_muprog`/`tool_mucertify` are deliberately NOT hard
+  `requires` in version.php (forcing the cert stack onto every tenant for an optional
+  off-by-default feature would be wrong). `cert_wrap` does a runtime soft-check
+  (`class_exists` + a version floor of the verified `2026041950`); a toggle that is
+  on with the plugin/API absent warns and skips.
+
+**Why.** The wrap is a real two-plugin integration but the API is clean: program
+and certification each take `{contextid, fullname, idnumber}` (the cert also takes
+`programid1`), both `create()` calls self-fill all other NOT NULL fields, and the
+UNIQUE idnumber gives a DB-enforced idempotency/cleanup handle. In-band wrap reuses
+the existing course rebuild path exactly, so a retry provably cannot strand or
+duplicate a program/certification. Best-effort keeps an optional finalize step from
+destroying a fully-built course.
+
+**Rejected.** Hard `requires` on the cert stack (forces it on every tenant);
+find-or-create-and-re-point on retry (must fix the orphaned old-course item when the
+course is rebuilt — more moving parts than delete-and-rebuild); hard-fail on wrap
+error (loses a built course over an optional step); auto-enabling the program when
+only the certification toggle is set (creates a program the admin didn't request);
+shipping the arbitrary 1000000 cap default.
+
+**Revisit if.** The wrap should also allocate learners (add an allocation source at
+wrap time); or recertification is wanted (set `programid2`/`recertify` on the
+certification); or the wrap should move out of materialize into an explicit,
+separately-triggered finalize action.
