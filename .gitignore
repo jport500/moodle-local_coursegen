@@ -1,3 +1,6 @@
 .DS_Store
-/vendor/
 /node_modules/
+
+# vendor/ is intentionally committed (declared in thirdpartylibs.xml) so the
+# plugin zip is self-contained — Moodle servers do not run composer install.
+

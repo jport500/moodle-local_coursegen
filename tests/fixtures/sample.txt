@@ -1,0 +1,5 @@
+Course Introduction
+
+This is the first paragraph of the plain text source. It introduces the topic and sets expectations.
+
+This is the second paragraph with more detail about the subject matter and why it is useful.

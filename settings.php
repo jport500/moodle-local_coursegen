@@ -107,6 +107,29 @@ if ($hassiteconfig) {
         PARAM_INT
     ));
 
+    // Per-job source ingestion limits (SPEC §4) — per-tenant configurable.
+    $settings->add(new admin_setting_heading(
+        'local_coursegen/heading_limits',
+        get_string('setting_heading_limits', 'local_coursegen'),
+        get_string('setting_heading_limits_desc', 'local_coursegen')
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_coursegen/max_source_bytes',
+        get_string('setting_max_source_bytes', 'local_coursegen'),
+        get_string('setting_max_source_bytes_desc', 'local_coursegen'),
+        '20971520',
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_coursegen/max_corpus_tokens',
+        get_string('setting_max_corpus_tokens', 'local_coursegen'),
+        get_string('setting_max_corpus_tokens_desc', 'local_coursegen'),
+        '200000',
+        PARAM_INT
+    ));
+
     // Generation mode and content defaults (SPEC §6, DECISIONS D3).
     $settings->add(new admin_setting_heading(
         'local_coursegen/heading_modes',

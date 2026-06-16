@@ -82,6 +82,7 @@ class provider implements
                 'filename'       => 'privacy:metadata:coursegen_source:filename',
                 'itemid'         => 'privacy:metadata:coursegen_source:itemid',
                 'extractedchars' => 'privacy:metadata:coursegen_source:extractedchars',
+                'corpus'         => 'privacy:metadata:coursegen_source:corpus',
                 'status'         => 'privacy:metadata:coursegen_source:status',
                 'timecreated'    => 'privacy:metadata:coursegen_source:timecreated',
             ],
@@ -207,6 +208,7 @@ class provider implements
                                 'type'           => $source->type,
                                 'filename'       => $source->filename,
                                 'extractedchars' => $source->extractedchars !== null ? (int) $source->extractedchars : null,
+                                'corpus'         => $source->corpus,
                                 'status'         => $source->status,
                                 'timecreated'    => transform::datetime($source->timecreated),
                             ];

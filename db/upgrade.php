@@ -15,23 +15,32 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_coursegen.
+ * Upgrade steps for local_coursegen.
  *
  * @package    local_coursegen
  * @copyright  2026 LMS Light
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+/**
+ * Apply the local_coursegen schema upgrades.
+ *
+ * @param int $oldversion the version we are upgrading from
+ * @return bool
+ */
+function xmldb_local_coursegen_upgrade($oldversion) {
+    global $DB;
+    $dbman = $DB->get_manager();
 
-$plugin->component = 'local_coursegen';
-$plugin->version = 2026061601;
-$plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
-$plugin->maturity = MATURITY_ALPHA;
-$plugin->release = 'v0.1.0';
-$plugin->dependencies = [
-    // Generated courses default to the format_pathway course format (DECISIONS D10).
-    'format_pathway' => 2025021586,
-    // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
-    'local_quizgenpro' => 2026012301,
-];
+    if ($oldversion < 2026061601) {
+        // P1: store the normalized source corpus (ordered blocks JSON) per source.
+        $table = new xmldb_table('coursegen_source');
+        $field = new xmldb_field('corpus', XMLDB_TYPE_TEXT, null, null, null, null, null, 'extractedchars');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        upgrade_plugin_savepoint(true, 2026061601, 'local', 'coursegen');
+    }
+
+    return true;
+}

@@ -15,23 +15,27 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_coursegen.
+ * Contract for source-file text/structure extractors.
  *
  * @package    local_coursegen
  * @copyright  2026 LMS Light
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+namespace local_coursegen\local\extractor;
 
-$plugin->component = 'local_coursegen';
-$plugin->version = 2026061601;
-$plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
-$plugin->maturity = MATURITY_ALPHA;
-$plugin->release = 'v0.1.0';
-$plugin->dependencies = [
-    // Generated courses default to the format_pathway course format (DECISIONS D10).
-    'format_pathway' => 2025021586,
-    // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
-    'local_quizgenpro' => 2026012301,
-];
+use local_coursegen\local\corpus;
+
+/**
+ * Implemented by each per-format extractor (PDF, DOCX, PPTX, text/markdown).
+ */
+interface file_extractor {
+    /**
+     * Extract a normalized corpus from a stored source file.
+     *
+     * @param \stored_file $file The permanent source file.
+     * @return corpus The ordered, structure-aware corpus.
+     * @throws \local_coursegen\local\extractor\extraction_exception on unreadable/corrupt input.
+     */
+    public function extract(\stored_file $file): corpus;
+}

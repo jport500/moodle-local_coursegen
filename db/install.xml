@@ -36,6 +36,7 @@
         <FIELD NAME="filename" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Original filename for uploaded sources; NULL for pasted text/topic."/>
         <FIELD NAME="itemid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="File API itemid for the stored source file, if any."/>
         <FIELD NAME="extractedchars" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Size of the normalized corpus extracted from this source."/>
+        <FIELD NAME="corpus" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Normalized source corpus: JSON of ordered blocks with heading/structure metadata (SPEC §4)."/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" SEQUENCE="false" COMMENT="pending | extracted | failed."/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>

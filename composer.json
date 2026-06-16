@@ -1,0 +1,13 @@
+{
+    "name": "lmslight/moodle-local_coursegen",
+    "description": "LMS Light AI course builder. Third-party libraries are vendored and committed; see thirdpartylibs.xml.",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "smalot/pdfparser": "^2.12"
+    },
+    "config": {
+        "platform": {
+            "php": "8.2"
+        }
+    }
+}

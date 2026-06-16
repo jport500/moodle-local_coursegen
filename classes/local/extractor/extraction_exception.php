@@ -15,23 +15,28 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_coursegen.
+ * Raised when a source file cannot be read or parsed.
  *
  * @package    local_coursegen
  * @copyright  2026 LMS Light
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+namespace local_coursegen\local\extractor;
 
-$plugin->component = 'local_coursegen';
-$plugin->version = 2026061601;
-$plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
-$plugin->maturity = MATURITY_ALPHA;
-$plugin->release = 'v0.1.0';
-$plugin->dependencies = [
-    // Generated courses default to the format_pathway course format (DECISIONS D10).
-    'format_pathway' => 2025021586,
-    // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
-    'local_quizgenpro' => 2026012301,
-];
+/**
+ * A narrow exception representing an extraction failure for one source.
+ *
+ * Catching this (rather than \Throwable) keeps fail-handling from masking
+ * programmer errors, per the LMS Light fail-open guidance.
+ */
+class extraction_exception extends \moodle_exception {
+    /**
+     * Build the extraction exception.
+     *
+     * @param string $reason Short, non-sensitive reason (becomes the debug detail).
+     */
+    public function __construct(string $reason = '') {
+        parent::__construct('extractionfailed', 'local_coursegen', '', null, $reason);
+    }
+}
