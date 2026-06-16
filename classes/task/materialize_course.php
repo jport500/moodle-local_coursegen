@@ -27,6 +27,8 @@ namespace local_coursegen\task;
 use local_coursegen\local\ai\core_ai_image_client;
 use local_coursegen\local\ai\core_ai_text_client;
 use local_coursegen\local\ai\image_client;
+use local_coursegen\local\ai\quiz_client;
+use local_coursegen\local\ai\quizgenpro_quiz_client;
 use local_coursegen\local\ai\text_client;
 use local_coursegen\local\job_manager;
 use local_coursegen\local\materializer;
@@ -61,12 +63,17 @@ class materialize_course extends \core\task\adhoc_task {
             mtrace("local_coursegen: job {$jobid} not found; skipping materialization.");
             return;
         }
-        if ($job->status !== job_manager::STATUS_APPROVED) {
-            mtrace("local_coursegen: job {$jobid} not approved ({$job->status}); skipping materialization.");
+        // Accept a fresh approval or a retry of an attempt that died mid-run.
+        if (
+            $job->status !== job_manager::STATUS_APPROVED
+                && $job->status !== job_manager::STATUS_MATERIALIZING
+        ) {
+            mtrace("local_coursegen: job {$jobid} not materializable ({$job->status}); skipping.");
             return;
         }
 
-        (new materializer($this->get_text_client(), $this->get_image_client()))->materialize($job);
+        (new materializer($this->get_text_client(), $this->get_image_client(), $this->get_quiz_client()))
+            ->materialize($job);
     }
 
     /**
@@ -85,5 +92,14 @@ class materialize_course extends \core\task\adhoc_task {
      */
     protected function get_image_client(): image_client {
         return new core_ai_image_client();
+    }
+
+    /**
+     * The quiz client. Overridable in tests to inject a stub.
+     *
+     * @return quiz_client
+     */
+    protected function get_quiz_client(): quiz_client {
+        return new quizgenpro_quiz_client();
     }
 }

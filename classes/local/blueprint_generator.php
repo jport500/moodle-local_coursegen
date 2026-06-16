@@ -211,24 +211,22 @@ class blueprint_generator {
      * @return text_result
      */
     private function call_and_log(string $prompt, \stdClass $job, \context $context, string $detail): text_result {
-        global $DB;
         $result = $this->client->generate($prompt, $context, (int) $job->userid);
-        $DB->insert_record('coursegen_log', (object) [
-            'jobid' => $job->id,
-            'userid' => $job->userid,
-            'stage' => self::STAGE,
-            'tier' => self::TIER,
-            'actionname' => 'generate_text',
-            'provider' => $result->provider,
-            'model' => $result->model,
-            'tokensin' => $result->prompttokens,
-            'tokensout' => $result->completiontokens,
-            'imagecount' => null,
-            'estimatedcost' => null,
-            'outcome' => $result->success ? 'success' : 'failure',
-            'detail' => $result->success ? $detail : ($detail . ': ' . $result->error),
-            'timecreated' => time(),
-        ]);
+        audit_log::record(
+            (int) $job->id,
+            (int) $job->userid,
+            self::STAGE,
+            $result->success ? audit_log::SUCCESS : audit_log::FAILURE,
+            $result->success ? $detail : ($detail . ': ' . $result->error),
+            [
+                'tier' => self::TIER,
+                'actionname' => 'generate_text',
+                'provider' => $result->provider,
+                'model' => $result->model,
+                'tokensin' => $result->prompttokens,
+                'tokensout' => $result->completiontokens,
+            ]
+        );
         return $result;
     }
 
@@ -257,24 +255,15 @@ class blueprint_generator {
      * @return void
      */
     private function fail_job(\stdClass $job, ?\context $context, string $reason): void {
-        global $DB;
         $this->set_status($job, job_manager::STATUS_FAILED);
-        $DB->insert_record('coursegen_log', (object) [
-            'jobid' => $job->id,
-            'userid' => $job->userid,
-            'stage' => self::STAGE,
-            'tier' => self::TIER,
-            'actionname' => null,
-            'provider' => null,
-            'model' => null,
-            'tokensin' => null,
-            'tokensout' => null,
-            'imagecount' => null,
-            'estimatedcost' => null,
-            'outcome' => 'failure',
-            'detail' => $reason,
-            'timecreated' => time(),
-        ]);
+        audit_log::record(
+            (int) $job->id,
+            (int) $job->userid,
+            self::STAGE,
+            audit_log::FAILURE,
+            $reason,
+            ['tier' => self::TIER]
+        );
         mtrace("local_coursegen: blueprint for job {$job->id} failed: {$reason}");
     }
 

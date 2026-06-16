@@ -32,6 +32,7 @@ require_once($CFG->libdir . '/clilib.php');
 
 use local_coursegen\local\ai\core_ai_image_client;
 use local_coursegen\local\ai\core_ai_text_client;
+use local_coursegen\local\ai\quizgenpro_quiz_client;
 use local_coursegen\local\materializer;
 
 [$options, $unrecognised] = cli_get_params([
@@ -51,7 +52,8 @@ $user = core_user::get_user($job->userid, '*', MUST_EXIST);
 \core\cron::setup_user($user);
 
 cli_writeln("Materializing job {$job->id} (status: {$job->status})...");
-$ok = (new materializer(new core_ai_text_client(), new core_ai_image_client()))->materialize($job);
+$ok = (new materializer(new core_ai_text_client(), new core_ai_image_client(), new quizgenpro_quiz_client()))
+    ->materialize($job);
 
 $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
 cli_writeln('Result: ' . ($ok ? 'success' : 'FAILED') . "; job status: {$job->status}");

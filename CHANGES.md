@@ -3,6 +3,46 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.6.0 — 2026-06-16 (Phase 5: assessments)
+
+Fulfils the blueprint's assessment spec by placing inline formative knowledge
+checks in the materialized course. No program/cert wrap (P6), publishing, or
+governance UI.
+
+- For each `type=quiz` section, the materialize pass generates questions from
+  the section's reading content via local_quizgenpro (delegated, D5/D10), banks
+  them in the course's default question bank (mod_qbank), creates a **stealth
+  `mod_knowledgecheck`** in that pathway section, pins the banked entries
+  (`\mod_knowledgecheck\local\questions::add`), and embeds the check's
+  `{knowledgecheck id=<uuid>}` filter token in the section's reading label so it
+  renders inline. Formative by design — best-attempt, retry freely (D15).
+  A graded mod_quiz is a documented fast-follow; adds dependencies
+  `mod_knowledgecheck` + `filter_knowledgecheck`.
+- The knowledge check owns its completion (auto-complete on a finished attempt),
+  so assessed sections are natively completion-tracked — feeding format_pathway
+  progress and the cert/CE chain (the thing reading labels can't). `type=none`
+  sections get none. "complete" now means reading + assessments built.
+- **Disabled-filter guard:** if `filter_knowledgecheck` is off, the check is
+  created non-stealth (shown on the course page) with no token and a logged
+  warning — never a silently-invisible assessment (D15).
+- `quiz_client` seam (real `quizgenpro_quiz_client` + `stub_quiz_client`),
+  mirroring the text/image seams — the AI generation is unit-testable offline;
+  the banking (quizgenpro exporter) and pinning run for real in tests. A drift
+  guard round-trips a generator-shaped question through the remap and the real
+  exporter, so a change to quizgenpro's `question`/`text` field breaks a test.
+- Cost: quiz-gen spend is out of coursegen's cap — quizgenpro governs its own and
+  exposes no tokens (D13). A no-questions (or banking) failure skips the check
+  and still completes the course (D14).
+
+P4 carry-overs resolved:
+- Partial-failure / re-entrancy: a failed pass deletes its half-built hidden
+  course (no orphans), and the materialize task accepts approved OR materializing
+  and deletes any prior partial course before rebuilding — so a retry never mints
+  a second course or strands the job at "materializing".
+- The §10.2 audit log is now written through a single `audit_log::record()` whose
+  `outcome` is a required argument (no success default), used by every stage —
+  closing the "failure logged as success" bug class seen in P3/P4.
+
 ## v0.5.0 — 2026-06-16 (Phase 4: materialization)
 
 Turns an approved blueprint into a real, hidden Moodle course. No quizzes

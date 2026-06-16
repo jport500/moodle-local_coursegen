@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026061604;
+$plugin->version = 2026061606;
 $plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
 $plugin->maturity = MATURITY_ALPHA;
 $plugin->release = 'v0.1.0';
@@ -34,4 +34,7 @@ $plugin->dependencies = [
     'format_pathway' => 2025021586,
     // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
     'local_quizgenpro' => 2026012301,
+    // Assessed sections are placed as formative knowledge checks (DECISIONS D15).
+    'mod_knowledgecheck' => 2026051800,
+    'filter_knowledgecheck' => 2026051800,
 ];

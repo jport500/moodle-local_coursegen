@@ -25,6 +25,7 @@
 namespace local_coursegen;
 
 use local_coursegen\local\ai\stub_image_client;
+use local_coursegen\local\ai\stub_quiz_client;
 use local_coursegen\local\ai\stub_text_client;
 use local_coursegen\local\ai\text_result;
 use local_coursegen\local\blueprint;
@@ -37,6 +38,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/fixtures/stub_text_client.php');
 require_once(__DIR__ . '/fixtures/stub_image_client.php');
+require_once(__DIR__ . '/fixtures/stub_quiz_client.php');
 
 /**
  * Tests materializer.
@@ -56,7 +58,7 @@ final class materializer_test extends \advanced_testcase {
         $job = $this->approved_job();
 
         $image = new stub_image_client(true);
-        $ok = (new materializer($this->text(), $image))->materialize($job);
+        $ok = (new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job);
         $this->assertTrue($ok);
 
         $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
@@ -107,7 +109,8 @@ final class materializer_test extends \advanced_testcase {
         $job = $this->approved_job();
 
         ob_start();
-        $ok = (new materializer($this->text(), new stub_image_client(true)))->materialize($job);
+        $ok = (new materializer($this->text(), new stub_image_client(true), new stub_quiz_client(true)))
+            ->materialize($job);
         ob_end_clean();
 
         $this->assertFalse($ok);
@@ -135,7 +138,7 @@ final class materializer_test extends \advanced_testcase {
         ]);
 
         $image = new stub_image_client(true);
-        $this->assertTrue((new materializer($this->text(), $image))->materialize($job));
+        $this->assertTrue((new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job));
 
         $this->assertEquals(0, $image->call_count());
         $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
@@ -159,7 +162,8 @@ final class materializer_test extends \advanced_testcase {
         $job = $this->approved_job();
 
         $failtext = new stub_text_client([new text_result(success: false, provider: 'p', error: 'boom')]);
-        $this->assertTrue((new materializer($failtext, new stub_image_client(false)))->materialize($job));
+        $this->assertTrue((new materializer($failtext, new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
 
         $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
         $this->assertSame(job_manager::STATUS_COMPLETE, $job->status);
@@ -167,6 +171,194 @@ final class materializer_test extends \advanced_testcase {
             'coursegen_log',
             ['jobid' => $job->id, 'stage' => 'materialize', 'outcome' => 'failure']
         ));
+    }
+
+    /**
+     * With the filter enabled, a type=quiz section gets a STEALTH knowledge
+     * check with the banked questions pinned, automatic completion, and its
+     * {knowledgecheck} token embedded in the section label.
+     *
+     * @return void
+     */
+    public function test_quiz_section_gets_stealth_knowledgecheck(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+        $job = $this->approved_job_with([
+            ['title' => 'Assessed', 'summary' => 's', 'objectives' => ['o'],
+             'assessment' => ['type' => 'quiz', 'questioncount' => 3]],
+        ]);
+
+        $ok = (new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job);
+        $this->assertTrue($ok);
+
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $kcs = $DB->get_records('knowledgecheck', ['course' => $job->courseid]);
+        $this->assertCount(1, $kcs);
+        $kc = reset($kcs);
+        $this->assertEquals(3, $DB->count_records('knowledgecheck_questions', ['knowledgecheckid' => $kc->id]));
+
+        $cm = get_coursemodule_from_instance('knowledgecheck', $kc->id);
+        $this->assertEquals(COMPLETION_TRACKING_AUTOMATIC, (int) $cm->completion);
+        $this->assertEquals(0, (int) $cm->visibleoncoursepage); // Stealth.
+        $this->assertEquals(1, (int) $kc->completionsubmit);
+
+        // The token is embedded in the section label.
+        $this->assertTrue($DB->record_exists_select(
+            'label',
+            'course = :c AND ' . $DB->sql_like('intro', ':tok'),
+            ['c' => $job->courseid, 'tok' => '%{knowledgecheck id=' . $kc->uuid . '}%']
+        ));
+        $this->assertTrue($DB->record_exists(
+            'coursegen_log',
+            ['jobid' => $job->id, 'tier' => 'assessment', 'outcome' => 'success']
+        ));
+    }
+
+    /**
+     * With the filter DISABLED, the check is created non-stealth (shown on the
+     * course page) with no token, and the course still completes.
+     *
+     * @return void
+     */
+    public function test_filter_disabled_non_stealth_fallback(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        filter_set_global_state('knowledgecheck', TEXTFILTER_DISABLED);
+        $job = $this->approved_job_with([
+            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $kc = $DB->get_record('knowledgecheck', ['course' => $job->courseid], '*', MUST_EXIST);
+        $cm = get_coursemodule_from_instance('knowledgecheck', $kc->id);
+        $this->assertEquals(1, (int) $cm->visibleoncoursepage); // Non-stealth fallback.
+        $this->assertFalse($DB->record_exists_select(
+            'label',
+            'course = :c AND ' . $DB->sql_like('intro', ':tok'),
+            ['c' => $job->courseid, 'tok' => '%{knowledgecheck%']
+        ));
+        $this->assertSame(job_manager::STATUS_COMPLETE, $job->status);
+    }
+
+    /**
+     * A type=none section gets no knowledge check, and the quiz client is not called.
+     *
+     * @return void
+     */
+    public function test_none_section_no_check(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Reading only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $quizclient = new stub_quiz_client(true);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), $quizclient))
+            ->materialize($job));
+
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $this->assertEquals(0, $DB->count_records('knowledgecheck', ['course' => $job->courseid]));
+        $this->assertEquals(0, $quizclient->call_count());
+    }
+
+    /**
+     * No usable questions skips the check but still completes the course.
+     *
+     * @return void
+     */
+    public function test_quiz_failure_skips_and_builds(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+        $job = $this->approved_job_with([
+            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+        ]);
+
+        // Quiz client returns no questions.
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(false)))
+            ->materialize($job));
+
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $this->assertSame(job_manager::STATUS_COMPLETE, $job->status);
+        $this->assertEquals(0, $DB->count_records('knowledgecheck', ['course' => $job->courseid]));
+        $this->assertTrue($DB->record_exists(
+            'coursegen_log',
+            ['jobid' => $job->id, 'tier' => 'assessment', 'outcome' => 'failure']
+        ));
+    }
+
+    /**
+     * A retry of a job stuck at "materializing" deletes the prior partial
+     * course and rebuilds — never a second course, never stranded.
+     *
+     * @return void
+     */
+    public function test_reentrant_rebuild_no_duplicate(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $firstcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+        $this->assertNotEmpty($firstcourse);
+
+        // Simulate a prior attempt that died mid-run (status left at materializing).
+        $DB->set_field('coursegen_job', 'status', job_manager::STATUS_MATERIALIZING, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $secondcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        $this->assertNotEquals($firstcourse, $secondcourse);
+        $this->assertFalse($DB->record_exists('course', ['id' => $firstcourse]));
+        $this->assertEquals(1, $DB->count_records('course', ['shortname' => 'coursegen-' . $job->id]));
+        $this->assertSame(
+            job_manager::STATUS_COMPLETE,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+    }
+
+    /**
+     * Insert an approved job with the given section specs.
+     *
+     * @param array[] $sections Section specs in blueprint::from_array shape.
+     * @return \stdClass The job.
+     */
+    private function approved_job_with(array $sections): \stdClass {
+        global $DB;
+        $category = $this->getDataGenerator()->create_category();
+        $context = \context_coursecat::instance($category->id);
+        $now = time();
+        $jobid = $DB->insert_record('coursegen_job', (object) [
+            'userid' => 2,
+            'contextid' => $context->id,
+            'courseid' => null,
+            'mode' => 'automatic',
+            'status' => job_manager::STATUS_APPROVED,
+            'timecreated' => $now,
+            'timemodified' => $now,
+            'usermodified' => 2,
+        ]);
+        $job = $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
+        $blueprint = blueprint::from_array(['title' => 'Course', 'description' => 'd', 'sections' => $sections]);
+        blueprint_store::save_new_version($job, $blueprint, 2);
+        return $job;
     }
 
     /**

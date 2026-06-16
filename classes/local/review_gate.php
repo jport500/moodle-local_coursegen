@@ -147,21 +147,6 @@ class review_gate {
         $DB->set_field('coursegen_job', 'status', $status, ['id' => $job->id]);
         $DB->set_field('coursegen_job', 'timemodified', time(), ['id' => $job->id]);
         $job->status = $status;
-        $DB->insert_record('coursegen_log', (object) [
-            'jobid' => $job->id,
-            'userid' => $userid ?: null,
-            'stage' => 'review',
-            'tier' => null,
-            'actionname' => null,
-            'provider' => null,
-            'model' => null,
-            'tokensin' => null,
-            'tokensout' => null,
-            'imagecount' => null,
-            'estimatedcost' => null,
-            'outcome' => 'success',
-            'detail' => $detail,
-            'timecreated' => time(),
-        ]);
+        audit_log::record((int) $job->id, $userid, 'review', audit_log::SUCCESS, $detail);
     }
 }

@@ -118,23 +118,21 @@ class section_regenerator {
      * @return void
      */
     private function log(\stdClass $job, int $userid, text_result $result, string $detail): void {
-        global $DB;
-        $DB->insert_record('coursegen_log', (object) [
-            'jobid' => $job->id,
-            'userid' => $userid ?: null,
-            'stage' => self::STAGE,
-            'tier' => self::TIER,
-            'actionname' => 'generate_text',
-            'provider' => $result->provider,
-            'model' => $result->model,
-            'tokensin' => $result->prompttokens,
-            'tokensout' => $result->completiontokens,
-            'imagecount' => null,
-            'estimatedcost' => null,
-            'outcome' => $result->success ? 'success' : 'failure',
-            'detail' => $result->success ? $detail : ($detail . ': ' . $result->error),
-            'timecreated' => time(),
-        ]);
+        audit_log::record(
+            (int) $job->id,
+            $userid,
+            self::STAGE,
+            $result->success ? audit_log::SUCCESS : audit_log::FAILURE,
+            $result->success ? $detail : ($detail . ': ' . $result->error),
+            [
+                'tier' => self::TIER,
+                'actionname' => 'generate_text',
+                'provider' => $result->provider,
+                'model' => $result->model,
+                'tokensin' => $result->prompttokens,
+                'tokensout' => $result->completiontokens,
+            ]
+        );
     }
 
     /**

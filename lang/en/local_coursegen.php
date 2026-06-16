@@ -61,6 +61,7 @@ $string['field_topic'] = 'Topic';
 $string['field_topic_help'] = 'Optionally describe the course topic. You can provide a topic, upload source files, or both. A topic-only job skips extraction and uses the prompt as its corpus.';
 $string['jobqueued'] = 'Generation job {$a} created; source extraction has been queued.';
 $string['jobstatus'] = 'Status: {$a}';
+$string['kcname'] = 'Knowledge check: {$a}';
 $string['mode_automatic'] = 'Automatic (no review gate)';
 $string['mode_outlinefirst'] = 'Outline first (review the blueprint before building)';
 $string['noblueprint'] = 'No blueprint has been generated yet (job status: {$a}).';

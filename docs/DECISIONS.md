@@ -294,3 +294,82 @@ mod_mubook now (heavier, audit-pending — deferred); flashcards in v1 (scope).
 
 **Revisit if.** A customer needs long multi-chapter sections (promote
 mod_mubook) or spaced-recall study aids (add flashcards).
+
+---
+
+## D13 — Quiz-generation cost is out of coursegen's cap; quizgenpro governs its own (P5)
+
+**Decision.** Assessment generation is delegated to local_quizgenpro, which uses
+its own AI provider config and exposes no token/cost to the caller. quiz-gen
+spend is therefore NOT counted in coursegen's §10.2 token log, estimate, or
+materialize-time spend cap; it is governed by quizgenpro's own provider limits.
+coursegen logs the quiz step (provider `quizgenpro`, no tokens) for audit, and
+calls quizgenpro's public API (generator + exporter) — it never reimplements
+question generation (D5/D10). Because quizgenpro only generates and banks
+questions (no quiz placement), coursegen creates the mod_quiz and attaches the
+questions; that assembly is materialization, not generation.
+
+**Why.** quizgenpro returns no usage data, so including its cost would require
+estimating or patching it — both out of scope for v1. Keeping the boundary
+explicit avoids a misleadingly precise coursegen estimate.
+
+**Rejected.** Estimating quiz cost from question counts (guesswork); patching
+quizgenpro to surface tokens (cross-plugin change, out of scope).
+
+**Revisit if.** quizgenpro exposes per-call token/cost; then fold quiz spend
+into the §10.2 log and the cap.
+
+---
+
+## D14 — Quiz failure skips the assessment but still completes the course (P5)
+
+**Decision.** If quizgenpro errors or returns no usable questions for a section,
+the quiz is skipped (logged as a failure for audit), the section keeps its
+reading content, and materialization still completes. A quiz-generation failure
+never sinks the whole course.
+
+**Why.** Consistent with the P4 image-subcap "skip and build" precedent: a
+missing assessment in one section is a degraded result, not a fatal one, and the
+course is hidden/draft for instructor review anyway.
+
+**Rejected.** Failing the whole job on a single section's quiz failure (loses the
+reading content and every other section's work).
+
+**Revisit if.** Operators want assessments to be mandatory for certain course
+types; add a per-job "assessments required" toggle that hard-fails instead.
+
+---
+
+## D15 — Assessed sections use formative mod_knowledgecheck; graded mod_quiz deferred (P5)
+
+**Decision.** A type=quiz blueprint section is fulfilled by an inline
+mod_knowledgecheck (the house formative-check plugin): best-attempt, auto-
+complete on a finished attempt, rendered in place via filter_knowledgecheck's
+`{knowledgecheck id=<uuid>}` token embedded in the section's reading label.
+Questions are still generated and banked by local_quizgenpro (D5/D10/D13);
+coursegen banks them in the course's default question bank (mod_qbank), creates a
+stealth knowledge check, pins the banked entries
+(`\mod_knowledgecheck\local\questions::add`), and embeds the token. A graded
+mod_quiz for genuine certification assessment is a documented fast-follow, not
+built in v1. Adds dependencies `mod_knowledgecheck` and `filter_knowledgecheck`.
+
+**Why.** A pathway section is a learning step; the assessment there is formative
+(check understanding, retry freely), not a summative graded exam. mod_quiz with
+complete-on-attempt was the summative tool doing a formative job as a
+click-through — and required hand-assembling ~40 brittle quiz fields.
+knowledgecheck is purpose-built, renders inline in the reading flow, and owns its
+own completion. Stealth + completion-tracked still feeds format_pathway progress
+and the cert/CE chain.
+
+**Rejected.** mod_quiz inline (wrong tool, brittle creation); building both
+vehicles now (scope).
+
+**Disabled-filter handling.** If filter_knowledgecheck is not enabled at
+materialize time, the check is created NON-stealth (visible on the course page)
+with no embedded token and a logged warning — so it is reachable as a normal
+activity rather than a silently-invisible inline check. Enabling the filter
+restores inline rendering for future builds.
+
+**Revisit if.** A course type needs a graded, summative, certification-grade exam
+— add a mod_quiz vehicle as a per-section assessment option alongside the
+knowledge check.

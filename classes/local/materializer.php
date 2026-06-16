@@ -25,6 +25,7 @@
 namespace local_coursegen\local;
 
 use local_coursegen\local\ai\image_client;
+use local_coursegen\local\ai\quiz_client;
 use local_coursegen\local\ai\text_client;
 use local_coursegen\local\ai\text_result;
 
@@ -33,9 +34,14 @@ use local_coursegen\local\ai\text_result;
  * hidden course in format_pathway (draft-by-default, D3). Each section becomes
  * a pathway section holding one inline "Text and media" area (mod_label, D12)
  * with drafting-tier reading content and, when flagged, an embedded
- * AI-generated image with alt text. Enforces the spend + image caps at
- * materialize-time (SPEC §7), logs every AI call (§10.2), and advances the job
- * approved → materializing → complete/failed. It never publishes the course.
+ * AI-generated image with alt text; sections whose assessment spec is a quiz
+ * also get a (stealth) mod_knowledgecheck with quizgenpro-delegated questions,
+ * rendered inline via its filter token (D5/D10/D15). Enforces the spend +
+ * image caps at materialize-time (SPEC §7), logs every AI call (§10.2), and
+ * advances the job approved → materializing → complete/failed. It never
+ * publishes the course. The pass is re-entrant: any half-built hidden course
+ * from a prior attempt is deleted before rebuilding, so a retry never mints a
+ * second course or strands the job at "materializing".
  */
 class materializer {
     /** @var string Drafting prompt tier label (internal; D11). */
@@ -44,20 +50,32 @@ class materializer {
     /** @var string Image tier label. */
     private const TIER_IMAGE = 'image';
 
+    /** @var string Assessment tier label. */
+    private const TIER_ASSESSMENT = 'assessment';
+
     /** @var string Pipeline stage for the audit log. */
     private const STAGE = 'materialize';
+
+    /** @var int Default question count when an assessed section sets none. */
+    private const DEFAULT_QUESTION_COUNT = 5;
+
+    /** @var \context|null The course's default question-bank context, cached per run. */
+    private ?\context $coursebankcontext = null;
 
     /**
      * Construct the materializer.
      *
      * @param text_client $textclient Drafting/alt-text client (injectable for tests).
      * @param image_client $imageclient Image client (injectable for tests).
+     * @param quiz_client $quizclient Quiz-question client (injectable for tests).
      */
     public function __construct(
         /** @var text_client The text client. */
         private text_client $textclient,
         /** @var image_client The image client. */
         private image_client $imageclient,
+        /** @var quiz_client The quiz client. */
+        private quiz_client $quizclient,
     ) {
     }
 
@@ -71,8 +89,13 @@ class materializer {
         global $DB, $CFG;
         require_once($CFG->dirroot . '/course/lib.php');
         require_once($CFG->dirroot . '/course/modlib.php');
+        $this->coursebankcontext = null; // Fresh per course (the prior one may be deleted).
 
-        if ($job->status !== job_manager::STATUS_APPROVED) {
+        // Accept a fresh approval or a retry of an attempt that died mid-run.
+        if (
+            $job->status !== job_manager::STATUS_APPROVED
+                && $job->status !== job_manager::STATUS_MATERIALIZING
+        ) {
             return false;
         }
         $blueprint = blueprint_store::load_current($job->id);
@@ -85,6 +108,9 @@ class materializer {
             $this->fail($job, 'job context is not a category');
             return false;
         }
+
+        // Drop any half-built course from a prior attempt before rebuilding.
+        $this->cleanup_partial_course($job);
 
         // Spend cap pre-check (hard-stop), with a soft warning near the threshold.
         if (!$this->spend_precheck($job, $blueprint->estimate_units())) {
@@ -116,6 +142,15 @@ class materializer {
                 if ($imghtml !== '') {
                     $html .= $imghtml;
                     $imagebudget--;
+                }
+            }
+
+            // A knowledge check is built before the label so its filter token can
+            // be embedded in the label HTML.
+            if (($section['assessment']['type'] ?? '') === blueprint::ASSESS_QUIZ) {
+                $token = $this->build_knowledgecheck($job, $course, $coursecontext, $sectionnum, $html, $section);
+                if ($token !== '') {
+                    $html .= "\n" . \html_writer::tag('p', $token);
                 }
             }
 
@@ -336,7 +371,8 @@ PROMPT;
                 null,
                 null,
                 null,
-                "approaching spend cap: {$spent}+{$estimate} of {$cap}"
+                "approaching spend cap: {$spent}+{$estimate} of {$cap}",
+                audit_log::SUCCESS
             );
         }
         return ($spent + $estimate) <= $cap;
@@ -394,6 +430,214 @@ PROMPT;
     }
 
     /**
+     * Build a knowledge check for a section: delegate question generation to
+     * quizgenpro, bank the questions, place a knowledge check, pin the questions,
+     * and return its filter token for embedding in the section label. On any
+     * failure the check is skipped (the section keeps its reading) and the course
+     * still completes (the image-subcap "skip and build" precedent, D14). When
+     * filter_knowledgecheck is disabled the check is created non-stealth (shown on
+     * the course page) with no token, so it is never a silently-invisible
+     * assessment.
+     *
+     * @param \stdClass $job The job.
+     * @param \stdClass $course The course.
+     * @param \context $coursecontext The course context.
+     * @param int $sectionnum The section number.
+     * @param string $readinghtml The section reading HTML (question source content).
+     * @param array $section The section spec.
+     * @return string The {knowledgecheck ...} token to embed, or '' if none/fallback.
+     */
+    private function build_knowledgecheck(
+        \stdClass $job,
+        \stdClass $course,
+        \context $coursecontext,
+        int $sectionnum,
+        string $readinghtml,
+        array $section
+    ): string {
+        global $DB;
+        $count = ((int) ($section['assessment']['questioncount'] ?? 0)) ?: self::DEFAULT_QUESTION_COUNT;
+        $content = trim(html_to_text($readinghtml, 0));
+        if ($content === '') {
+            $content = $section['title'] . '. ' . $section['summary'];
+        }
+
+        $questions = $this->quizclient->generate_questions($content, $count, $coursecontext);
+        if ($questions === []) {
+            $this->log(
+                $job,
+                self::TIER_ASSESSMENT,
+                'quizgenpro',
+                null,
+                null,
+                null,
+                null,
+                null,
+                'knowledge check skipped (no questions): ' . $section['title'],
+                audit_log::FAILURE
+            );
+            return '';
+        }
+
+        $qrefs = $this->bank_questions($questions, $course);
+        if ($qrefs === []) {
+            $this->log(
+                $job,
+                self::TIER_ASSESSMENT,
+                'quizgenpro',
+                null,
+                null,
+                null,
+                null,
+                null,
+                'knowledge check skipped (banking failed): ' . $section['title'],
+                audit_log::FAILURE
+            );
+            return '';
+        }
+
+        $filteron = $this->filter_enabled($coursecontext);
+        $kc = $this->create_knowledgecheck($course, $sectionnum, $section['title'], $filteron);
+        foreach ($qrefs as [$qbeid, $version]) {
+            \mod_knowledgecheck\local\questions::add((int) $kc->instance, $qbeid, $version);
+        }
+        $n = count($qrefs);
+
+        if ($filteron) {
+            $uuid = $DB->get_field('knowledgecheck', 'uuid', ['id' => $kc->instance], MUST_EXIST);
+            $this->log(
+                $job,
+                self::TIER_ASSESSMENT,
+                'quizgenpro',
+                null,
+                null,
+                null,
+                null,
+                null,
+                "knowledge check: {$section['title']} ({$n} questions)",
+                audit_log::SUCCESS
+            );
+            return '{knowledgecheck id=' . $uuid . '}';
+        }
+
+        // The filter is disabled: non-stealth fallback, no inline token.
+        $this->log(
+            $job,
+            self::TIER_ASSESSMENT,
+            'quizgenpro',
+            null,
+            null,
+            null,
+            null,
+            null,
+            "knowledge check (filter disabled — shown on course page): {$section['title']} ({$n} questions)",
+            audit_log::SUCCESS
+        );
+        return '';
+    }
+
+    /**
+     * Create a knowledge check in a section, completed on a finished attempt so
+     * it counts toward format_pathway progress and the cert/CE chain (D12, D15).
+     * Stealth (available but off the course page) when the filter is enabled so it
+     * renders inline via the label token; otherwise shown on the course page.
+     *
+     * @param \stdClass $course The course.
+     * @param int $sectionnum The section number.
+     * @param string $title The section title (used for the activity name).
+     * @param bool $stealth Whether to hide it from the course page.
+     * @return \stdClass The created module info (carries ->instance).
+     */
+    private function create_knowledgecheck(
+        \stdClass $course,
+        int $sectionnum,
+        string $title,
+        bool $stealth
+    ): \stdClass {
+        global $DB;
+        $moduleinfo = (object) [
+            'modulename' => 'knowledgecheck',
+            'module' => $DB->get_field('modules', 'id', ['name' => 'knowledgecheck'], MUST_EXIST),
+            'course' => $course->id,
+            'section' => $sectionnum,
+            'visible' => 1,
+            'visibleoncoursepage' => $stealth ? 0 : 1,
+            'cmidnumber' => '',
+            'name' => \core_text::substr(get_string('kcname', 'local_coursegen', $title), 0, 250),
+            'intro' => '',
+            'introformat' => FORMAT_HTML,
+            // Automatic completion once the learner finishes an attempt.
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionsubmit' => 1,
+            'completionview' => 0,
+            'completionexpected' => 0,
+            'completiongradeitemnumber' => null,
+            'completionpassgrade' => 0,
+        ];
+        return add_moduleinfo($moduleinfo, $course);
+    }
+
+    /**
+     * Bank questions via quizgenpro's exporter into the course's default question
+     * bank, and return the pinned (bank-entry id, version) pairs.
+     *
+     * @param \stdClass[] $questions Exporter-ready question objects.
+     * @param \stdClass $course The course.
+     * @return array<int, array{0:int,1:int}> The [qbeid, version] pairs.
+     */
+    private function bank_questions(array $questions, \stdClass $course): array {
+        global $DB;
+        $bankcontext = $this->course_question_bank_context($course);
+        $export = (new \local_quizgenpro\exporter())->export_to_question_bank(
+            json_encode($questions),
+            (int) $course->id,
+            (int) $bankcontext->id
+        );
+
+        $rows = $DB->get_records_sql(
+            'SELECT qbe.id AS qbeid, MAX(qv.version) AS version
+               FROM {question_bank_entries} qbe
+               JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
+              WHERE qbe.questioncategoryid = :catid
+           GROUP BY qbe.id
+           ORDER BY qbe.id',
+            ['catid' => $export['catid']]
+        );
+
+        $refs = [];
+        foreach ($rows as $row) {
+            $refs[] = [(int) $row->qbeid, (int) $row->version];
+        }
+        return $refs;
+    }
+
+    /**
+     * The context of the course's default open question bank, created on first use.
+     *
+     * @param \stdClass $course The course.
+     * @return \context
+     */
+    private function course_question_bank_context(\stdClass $course): \context {
+        if ($this->coursebankcontext !== null) {
+            return $this->coursebankcontext;
+        }
+        $cm = \core_question\local\bank\question_bank_helper::get_default_open_instance_system_type($course, true);
+        $this->coursebankcontext = \context_module::instance($cm->id);
+        return $this->coursebankcontext;
+    }
+
+    /**
+     * Whether filter_knowledgecheck is active in the given context (so an
+     * embedded token will render inline).
+     *
+     * @param \context $context The context.
+     * @return bool
+     */
+    private function filter_enabled(\context $context): bool {
+        return array_key_exists('knowledgecheck', filter_get_active_in_context($context));
+    }
+
+    /**
      * Strip Markdown code fences from model HTML output.
      *
      * @param string $html The raw output.
@@ -426,9 +670,32 @@ PROMPT;
      * @return void
      */
     private function fail(\stdClass $job, string $reason): void {
+        // Leave no orphan: drop any half-built hidden course.
+        $this->cleanup_partial_course($job);
         $this->set_status($job, job_manager::STATUS_FAILED);
-        $this->log($job, null, null, null, null, null, null, null, $reason, 'failure');
+        $this->log($job, null, null, null, null, null, null, null, $reason, audit_log::FAILURE);
         mtrace("local_coursegen: materialize job {$job->id} failed: {$reason}");
+    }
+
+    /**
+     * Delete a previously-created (partial) course for the job, if any, and
+     * clear the recorded courseid. Safe because generated courses are always
+     * hidden and never learner-visible.
+     *
+     * @param \stdClass $job The job (courseid cleared in place).
+     * @return void
+     */
+    private function cleanup_partial_course(\stdClass $job): void {
+        global $DB, $CFG;
+        if (empty($job->courseid)) {
+            return;
+        }
+        require_once($CFG->dirroot . '/course/lib.php');
+        if ($DB->record_exists('course', ['id' => $job->courseid])) {
+            delete_course($job->courseid, false);
+        }
+        $job->courseid = null;
+        $DB->set_field('coursegen_job', 'courseid', null, ['id' => $job->id]);
     }
 
     /**
@@ -443,7 +710,7 @@ PROMPT;
      * @param int|null $tokensout Completion tokens.
      * @param int|null $imagecount Images produced.
      * @param string $detail Non-sensitive note.
-     * @param string $outcome 'success' or 'failure'.
+     * @param string $outcome audit_log::SUCCESS or audit_log::FAILURE (required).
      * @return void
      */
     private function log(
@@ -456,13 +723,10 @@ PROMPT;
         ?int $tokensout,
         ?int $imagecount,
         string $detail,
-        string $outcome = 'success'
+        string $outcome
     ): void {
         global $DB;
-        $DB->insert_record('coursegen_log', (object) [
-            'jobid' => $job->id,
-            'userid' => $job->userid,
-            'stage' => self::STAGE,
+        audit_log::record((int) $job->id, (int) $job->userid, self::STAGE, $outcome, $detail, [
             'tier' => $tier,
             'actionname' => $actionname,
             'provider' => $provider,
@@ -470,10 +734,6 @@ PROMPT;
             'tokensin' => $tokensin,
             'tokensout' => $tokensout,
             'imagecount' => $imagecount,
-            'estimatedcost' => null,
-            'outcome' => $outcome,
-            'detail' => $detail,
-            'timecreated' => time(),
         ]);
         if ($tokensin !== null || $tokensout !== null) {
             $DB->set_field('coursegen_job', 'actualspend', $this->job_spent($job), ['id' => $job->id]);
