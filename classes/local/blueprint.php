@@ -35,11 +35,13 @@ class blueprint {
     /** @var int Serialization format version. */
     public const VERSION = 1;
 
-    /** @var string Reading content delivered as a single page. */
-    public const CONTENT_PAGE = 'page';
-
-    /** @var string Reading content delivered as a multi-chapter book. */
-    public const CONTENT_BOOK = 'book';
+    /**
+     * @var string The only v1 content type: an inline "Text and media" area
+     * (mod_label) rendered in the section itself. Book/mod_mubook is a
+     * fast-follow (DECISIONS). The enum is intentionally single-valued so the
+     * blueprint can only emit what the materializer builds.
+     */
+    public const CONTENT_INLINE = 'inline';
 
     /** @var string Section assessed with a generated quiz. */
     public const ASSESS_QUIZ = 'quiz';
@@ -89,8 +91,8 @@ class blueprint {
      * @return void
      */
     public function add_section(array $section): void {
-        $contenttype = ($section['contenttype'] ?? self::CONTENT_PAGE) === self::CONTENT_BOOK
-            ? self::CONTENT_BOOK : self::CONTENT_PAGE;
+        // The v1 enum is single-valued; any input content type is ignored.
+        $contenttype = self::CONTENT_INLINE;
 
         $objectives = [];
         foreach ((array) ($section['objectives'] ?? []) as $objective) {
@@ -283,7 +285,6 @@ class blueprint {
         $titles = (array) ($data->sectiontitle ?? []);
         $orders = (array) ($data->sectionorder ?? []);
         $objectives = (array) ($data->sectionobjectives ?? []);
-        $contenttypes = (array) ($data->sectioncontenttype ?? []);
         $summaries = (array) ($data->sectionsummary ?? []);
         $images = (array) ($data->sectionimage ?? []);
         $imagehints = (array) ($data->sectionimagehint ?? []);
@@ -300,7 +301,6 @@ class blueprint {
                 'section' => [
                     'title' => (string) $title,
                     'objectives' => preg_split('/\R/', (string) ($objectives[$i] ?? '')),
-                    'contenttype' => (string) ($contenttypes[$i] ?? self::CONTENT_PAGE),
                     'summary' => (string) ($summaries[$i] ?? ''),
                     'image' => [
                         'generate' => !empty($images[$i]),

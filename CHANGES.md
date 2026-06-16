@@ -3,6 +3,36 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.5.0 — 2026-06-16 (Phase 4: materialization)
+
+Turns an approved blueprint into a real, hidden Moodle course. No quizzes
+(P5), program/cert wrapping (P6), flashcards/book, or publishing.
+
+- `materializer` consumes an approved job's current blueprint and creates a
+  course in format_pathway, **hidden** (draft-by-default, D3), with completion
+  enabled. Records the `courseid` on the job and advances
+  approved → materializing → complete/failed.
+- Each blueprint section becomes a pathway section holding one inline "Text and
+  media" area (`mod_label`, D12) with drafting-tier reading content and, where
+  flagged, an AI-generated image embedded inline (`@@PLUGINFILE@@`) with
+  generated alt text. Labels use manual completion so pathway progress and the
+  later cert/CE chain have completion-tracked activities.
+- `image_client` seam (real `core_ai_image_client` via the `generate_image`
+  action + `stub_image_client`), mirroring the P2 text seam — image generation
+  is unit-testable with no live call.
+- Materialize-time cap enforcement (SPEC §7): hard-stop if the job estimate
+  exceeds the tenant's remaining spend cap, soft-warn at the threshold, accrue
+  actual spend from the §10.2 token logs (with a mid-run hard-stop), and a
+  separate image sub-cap that skips excess images while still building.
+- §10.2 logging for every text and image call (provider/model/tokens/images).
+- `materialize_course` adhoc task, queued by `review_gate` when a job is
+  approved (auto in automatic mode, or on manual approval). `cli/materialize.php`.
+- Cleanup (D11/D12): removed the `provider_reasoning`/`provider_drafting`
+  settings (route nowhere); kept the separate image provider; collapsed the
+  blueprint content-type enum to a single inline type across the IR, edit form,
+  and prompts; reinterpreted the spend cap as generation units. Privacy
+  unchanged (`courseid` already covered).
+
 ## v0.4.0 — 2026-06-16 (Phase 3: review gate, editing, regeneration)
 
 Puts the human gate on top of the blueprint. No course materialization, content,

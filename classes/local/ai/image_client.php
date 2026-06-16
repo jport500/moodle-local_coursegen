@@ -15,23 +15,28 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for local_coursegen.
+ * Seam over the AI Providers image-generation action.
  *
  * @package    local_coursegen
  * @copyright  2026 LMS Light
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+namespace local_coursegen\local\ai;
 
-$plugin->component = 'local_coursegen';
-$plugin->version = 2026061604;
-$plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
-$plugin->maturity = MATURITY_ALPHA;
-$plugin->release = 'v0.1.0';
-$plugin->dependencies = [
-    // Generated courses default to the format_pathway course format (DECISIONS D10).
-    'format_pathway' => 2025021586,
-    // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
-    'local_quizgenpro' => 2026012301,
-];
+/**
+ * A narrow interface around a single `image`-tier image-generation call.
+ * The real implementation routes through core_ai's generate_image action;
+ * tests inject a stub so no live model is contacted (mirrors {@see text_client}).
+ */
+interface image_client {
+    /**
+     * Generate an image for a prompt.
+     *
+     * @param string $prompt The image prompt.
+     * @param \context $context The context the request is made in.
+     * @param int $userid The user the request is attributed to.
+     * @return image_result The outcome, including the draft image file.
+     */
+    public function generate_image(string $prompt, \context $context, int $userid): image_result;
+}

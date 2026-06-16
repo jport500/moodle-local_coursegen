@@ -53,22 +53,6 @@ if ($hassiteconfig) {
     ));
 
     $settings->add(new admin_setting_configselect(
-        'local_coursegen/provider_reasoning',
-        get_string('setting_provider_reasoning', 'local_coursegen'),
-        get_string('setting_provider_reasoning_desc', 'local_coursegen'),
-        '',
-        $provideroptions
-    ));
-
-    $settings->add(new admin_setting_configselect(
-        'local_coursegen/provider_drafting',
-        get_string('setting_provider_drafting', 'local_coursegen'),
-        get_string('setting_provider_drafting_desc', 'local_coursegen'),
-        '',
-        $provideroptions
-    ));
-
-    $settings->add(new admin_setting_configselect(
         'local_coursegen/provider_image',
         get_string('setting_provider_image', 'local_coursegen'),
         get_string('setting_provider_image_desc', 'local_coursegen'),
@@ -87,8 +71,8 @@ if ($hassiteconfig) {
         'local_coursegen/cap_period_spend',
         get_string('setting_cap_period_spend', 'local_coursegen'),
         get_string('setting_cap_period_spend_desc', 'local_coursegen'),
-        '50',
-        PARAM_FLOAT
+        '1000000',
+        PARAM_INT
     ));
 
     $settings->add(new admin_setting_configtext(

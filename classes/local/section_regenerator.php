@@ -155,7 +155,6 @@ Respond with ONLY a JSON object (no prose, no code fences) of this shape:
 {
   "title": "section title",
   "objectives": ["learning objective", "..."],
-  "contenttype": "page" or "book",
   "summary": "what this section teaches",
   "image": {"generate": true or false, "prompthint": "diagram idea or empty"},
   "assessment": {"type": "quiz" or "none", "questioncount": integer, "notes": "optional"}

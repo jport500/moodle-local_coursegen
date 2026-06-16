@@ -90,10 +90,14 @@ generate" for specific roles.
 
 ## D4 — v1 output is text + image; other formats deferred
 
-**Decision.** v1 generates learning objectives, structured reading
-(page/book), quizzes (via quizgenpro), flashcards, and AI-generated images
-(diagrams/illustrations). Audio/podcasts, video, comics, music, games, and
-a real-time AI tutor are out of scope for v1.
+**Decision.** v1 generates learning objectives, structured reading (inline
+"Text and media" areas — see D12), quizzes (via quizgenpro), and AI-generated
+images (diagrams/illustrations). Flashcards and book-style reading are deferred
+to fast-follows (D12). Audio/podcasts, video, comics, music, games, and a
+real-time AI tutor are out of scope for v1.
+
+*(P4 amendment: flashcards moved to fast-follow; "page/book" reading narrowed
+to a single inline type — see D12.)*
 
 **Why.** Moodle's AI subsystem is provider-pluggable, so format choice is a
 product/cost/quality call, not a constraint. Text and image are mature,
@@ -240,3 +244,53 @@ coursegen (duplicates the stack, against CONTEXT.md).
 
 **Revisit if.** Program/cert wrapping proves to be a default expectation for
 the cert/CE ICP; promote it from optional toggle to a first-class step.
+
+---
+
+## D11 — Capability tiers collapse to internal prompt labels (P4)
+
+**Decision.** The plugin no longer exposes per-tier provider settings
+(`provider_reasoning`, `provider_drafting` removed). core_ai's
+`process_action()` routes by configured provider *order*, not per call, so
+those settings routed nowhere. "Tier" survives only as an internal *prompt*
+label (a reasoning prompt vs a drafting prompt) issued against core_ai's single
+configured text provider. The image path stays separate because `generate_image`
+is its own core_ai action that routes to image-capable providers independently
+of text; `provider_image` is retained as the marker for that separate path.
+
+**Why.** Honest configuration: a setting that cannot change behaviour is worse
+than no setting. Tiering still has value as prompt-shaping (different system
+prompts for outline reasoning vs bulk drafting) even when both hit the same
+provider. §10.2 logging records the actually-resolved provider/model regardless.
+
+**Rejected.** Keeping the tier→provider dropdowns (mislead operators into
+thinking they route); reflection/core patches to force a provider per call
+(fragile, out of scope).
+
+**Revisit if.** core_ai adds public per-action / per-call provider selection —
+then reintroduce real tier→provider mapping and route the reasoning, drafting,
+and image tiers to distinct configured providers.
+
+---
+
+## D12 — Reading content is an inline "Text and media" area; book + flashcards deferred (P4)
+
+**Decision.** Generated reading content is materialized as an inline
+`mod_label` ("Text and media") area rendered within the format_pathway section,
+not `mod_page`. The blueprint content-type enum is single-valued (`inline`) so
+the plan can only emit what the materializer builds. Book-style reading
+(`mod_mubook`) and flashcards are deferred to fast-follows.
+
+**Why.** format_pathway shows one section at a time; an inline area displays the
+reading directly in the section, matching that pagination without an extra
+click into a page/book. Each label is created with manual completion and the
+course has completion enabled, so format_pathway's progress (which counts
+completion-tracked activities) works and the later muprog/mucertify cert/CE
+chain has per-activity completion to build on. A single content type keeps the
+blueprint, the edit form, and the materializer in lock-step.
+
+**Rejected.** mod_page (extra navigation, breaks the one-section flow);
+mod_mubook now (heavier, audit-pending — deferred); flashcards in v1 (scope).
+
+**Revisit if.** A customer needs long multi-chapter sections (promote
+mod_mubook) or spaced-recall study aids (add flashcards).

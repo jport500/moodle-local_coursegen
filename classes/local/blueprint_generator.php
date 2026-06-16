@@ -306,7 +306,6 @@ fences) of exactly this shape:
     {
       "title": "section title",
       "objectives": ["learning objective", "..."],
-      "contenttype": "page" or "book",
       "summary": "what this section teaches",
       "image": {"generate": true or false, "prompthint": "diagram idea or empty"},
       "assessment": {"type": "quiz" or "none", "questioncount": integer, "notes": "optional"}
@@ -314,8 +313,7 @@ fences) of exactly this shape:
   ]
 }
 
-Produce a coherent ordering even if the source is unstructured. Use "book" only
-for long multi-part sections; otherwise "page".
+Produce a coherent ordering even if the source is unstructured.
 
 SOURCE MATERIAL:
 {$sourcetext}

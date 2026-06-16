@@ -65,7 +65,7 @@ final class blueprint_edit_test extends \advanced_testcase {
         $this->assertSame('Alpha', $sections[0]['title']);
         $this->assertSame('Beta', $sections[1]['title']);
         $this->assertSame(['o1', 'o2'], $sections[1]['objectives']);
-        $this->assertSame(blueprint::CONTENT_BOOK, $sections[1]['contenttype']);
+        $this->assertSame(blueprint::CONTENT_INLINE, $sections[1]['contenttype']);
         $this->assertTrue($sections[1]['image']['generate']);
         $this->assertSame(1, $blueprint->image_count());
     }

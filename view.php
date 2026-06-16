@@ -86,14 +86,16 @@ foreach ($blueprint->get_sections() as $i => $section) {
         $items = array_map(static fn(string $o): string => html_writer::tag('li', s($o)), $section['objectives']);
         echo html_writer::tag('ul', implode('', $items));
     }
-    $meta = get_string('field_mode', 'local_coursegen') . ': ' . s($section['contenttype']);
+    $meta = [];
     if (!empty($section['image']['generate'])) {
-        $meta .= ' · ' . get_string('blueprintimage', 'local_coursegen');
+        $meta[] = get_string('blueprintimage', 'local_coursegen');
     }
     if ($section['assessment']['type'] === blueprint::ASSESS_QUIZ) {
-        $meta .= ' · ' . get_string('blueprintquiz', 'local_coursegen', (int) $section['assessment']['questioncount']);
+        $meta[] = get_string('blueprintquiz', 'local_coursegen', (int) $section['assessment']['questioncount']);
     }
-    echo html_writer::tag('p', $meta, ['class' => 'text-muted']);
+    if ($meta) {
+        echo html_writer::tag('p', implode(' · ', $meta), ['class' => 'text-muted']);
+    }
 }
 
 echo $OUTPUT->footer();

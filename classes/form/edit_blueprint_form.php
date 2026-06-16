@@ -66,10 +66,6 @@ class edit_blueprint_form extends \moodleform {
         );
         $mform->setType('description', PARAM_TEXT);
 
-        $contenttypes = [
-            blueprint::CONTENT_PAGE => get_string('contenttype_page', 'local_coursegen'),
-            blueprint::CONTENT_BOOK => get_string('contenttype_book', 'local_coursegen'),
-        ];
         $assesstypes = [
             blueprint::ASSESS_NONE => get_string('assess_none', 'local_coursegen'),
             blueprint::ASSESS_QUIZ => get_string('assess_quiz', 'local_coursegen'),
@@ -98,12 +94,6 @@ class edit_blueprint_form extends \moodleform {
             'sectionobjectives',
             get_string('field_objectives', 'local_coursegen'),
             ['rows' => 3, 'cols' => 50]
-        );
-        $repeat[] = $mform->createElement(
-            'select',
-            'sectioncontenttype',
-            get_string('field_contenttype', 'local_coursegen'),
-            $contenttypes
         );
         $repeat[] = $mform->createElement(
             'textarea',
@@ -146,7 +136,6 @@ class edit_blueprint_form extends \moodleform {
             'sectiontitle' => ['type' => PARAM_TEXT],
             'sectionorder' => ['type' => PARAM_INT],
             'sectionobjectives' => ['type' => PARAM_TEXT],
-            'sectioncontenttype' => ['type' => PARAM_ALPHA],
             'sectionsummary' => ['type' => PARAM_TEXT],
             'sectionimagehint' => ['type' => PARAM_TEXT],
             'sectionassesstype' => ['type' => PARAM_ALPHA],

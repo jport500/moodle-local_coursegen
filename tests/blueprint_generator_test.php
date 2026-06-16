@@ -221,8 +221,10 @@ final class blueprint_generator_test extends \advanced_testcase {
 
         // The task generates the blueprint and applies the gate; an
         // outline-first job lands at awaiting_review.
-        $this->assertTrue($DB->record_exists('coursegen_blueprint',
-            ['jobid' => $job->id, 'iscurrent' => 1]));
+        $this->assertTrue($DB->record_exists(
+            'coursegen_blueprint',
+            ['jobid' => $job->id, 'iscurrent' => 1]
+        ));
         $this->assertSame(
             job_manager::STATUS_AWAITING_REVIEW,
             $DB->get_field('coursegen_job', 'status', ['id' => $job->id])

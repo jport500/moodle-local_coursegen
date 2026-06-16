@@ -69,6 +69,7 @@ class review_gate {
                 (int) $job->userid,
                 'auto-approved (automatic mode)'
             );
+            self::queue_materialization($job);
         } else {
             self::transition(
                 $job,
@@ -95,6 +96,21 @@ class review_gate {
             throw new \moodle_exception('error_notawaitingreview', 'local_coursegen');
         }
         self::transition($job, job_manager::STATUS_APPROVED, $userid, 'approved');
+        self::queue_materialization($job);
+    }
+
+    /**
+     * Queue the adhoc task that materializes an approved job, carrying the
+     * acting user's id for tenant/user context.
+     *
+     * @param \stdClass $job The approved job.
+     * @return void
+     */
+    private static function queue_materialization(\stdClass $job): void {
+        $task = new \local_coursegen\task\materialize_course();
+        $task->set_custom_data((object) ['jobid' => $job->id]);
+        $task->set_userid((int) $job->userid);
+        \core\task\manager::queue_adhoc_task($task);
     }
 
     /**

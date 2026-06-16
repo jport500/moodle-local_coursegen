@@ -54,6 +54,12 @@ class job_manager {
     /** @var string Job status: blueprint approved; ready for materialization (P3 end state). */
     public const STATUS_APPROVED = 'approved';
 
+    /** @var string Job status: course is being built (P4). */
+    public const STATUS_MATERIALIZING = 'materializing';
+
+    /** @var string Job status: course built; ready for the instructor to publish (P4 end state). */
+    public const STATUS_COMPLETE = 'complete';
+
     /** @var string Job status: a stage failed. */
     public const STATUS_FAILED = 'failed';
 

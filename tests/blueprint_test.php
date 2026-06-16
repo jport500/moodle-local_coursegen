@@ -65,7 +65,7 @@ final class blueprint_test extends \advanced_testcase {
             'sections' => [['title' => 'Only title']],
         ]);
         $section = $blueprint->get_sections()[0];
-        $this->assertSame(blueprint::CONTENT_PAGE, $section['contenttype']);
+        $this->assertSame(blueprint::CONTENT_INLINE, $section['contenttype']);
         $this->assertSame(blueprint::ASSESS_NONE, $section['assessment']['type']);
         $this->assertSame([], $section['objectives']);
         $this->assertFalse($section['image']['generate']);
