@@ -373,3 +373,43 @@ restores inline rendering for future builds.
 **Revisit if.** A course type needs a graded, summative, certification-grade exam
 — add a mod_quiz vehicle as a per-section assessment option alongside the
 knowledge check.
+
+---
+
+## D16 — Spend cap is a rolling window enforced at every AI call; cert-chain wrap deferred to P7 (P6)
+
+**Decision.** The per-tenant spend cap (`cap_period_spend`) and image sub-cap
+(`cap_image_count`) are accounted over a rolling window (`period_days`, default
+30) from the §10.2 audit log, via a single `local\spend_governor`. The governor
+gates **every** AI call site — blueprint synthesis, section regeneration, and
+materialization — not just materialization. A cap of `0` means unlimited for both
+the spend cap and the image sub-cap. The original P0 default of `50` is bumped to
+the current default `1000000` by a `db/upgrade` step, but only where the stored
+value is still exactly `'50'` (an untouched default), never a value an admin set.
+
+The optional muprog/mucertify "wrap" (the `wrap_muprog` / `wrap_mucertify`
+toggles from D10/P0) is **deferred to P7**. The toggles remain in settings,
+labelled "not yet active".
+
+**Why.** A "per period" cap that summed all-time spend never reset — it was a
+lifetime budget that silently hard-stopped a tenant forever. A rolling window
+makes the period real. Gating only materialization left blueprint/regen reasoning
+calls uncapped, so "enforced at every AI call site" was untrue. The cap=50 bump
+is conditional so it self-heals untouched installs without overriding deliberate
+admin policy. The cert-chain wrap is a genuine two-plugin integration (create a
+muprog program, add the course to its content **tree** via
+`local\content\{top,set,course,item}`, then a mucertify certification linking the
+program through `programid1`), plus cross-plugin re-entrancy (a retry must not
+mint a duplicate program *or* certification). That is more than a finalize phase
+should carry, and the wrap is optional/off-by-default, so v1 is releasable without
+it.
+
+**Rejected.** Keeping the lifetime sum and renaming the setting (a never-resetting
+"period" cap is a footgun); gating only materialization (leaves reasoning spend
+uncapped); unconditionally bumping cap=50 (would clobber an admin who genuinely
+set 50); building the cert wrap in P6 (scope/risk in a finalize phase).
+
+**Revisit if.** Per-call estimates become available before the blueprint exists
+(then blueprint/regen could pre-check an estimate rather than only refusing an
+already-over-cap tenant); or the cert/CE ICP makes the wrap a default expectation
+(promote it from a P7 optional step per D10).

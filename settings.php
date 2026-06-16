@@ -76,6 +76,14 @@ if ($hassiteconfig) {
     ));
 
     $settings->add(new admin_setting_configtext(
+        'local_coursegen/period_days',
+        get_string('setting_period_days', 'local_coursegen'),
+        get_string('setting_period_days_desc', 'local_coursegen'),
+        '30',
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
         'local_coursegen/warn_threshold_pct',
         get_string('setting_warn_threshold_pct', 'local_coursegen'),
         get_string('setting_warn_threshold_pct_desc', 'local_coursegen'),

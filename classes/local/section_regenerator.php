@@ -75,6 +75,18 @@ class section_regenerator {
             return false;
         }
 
+        // Don't spend reasoning tokens for a tenant already over its period cap.
+        if (spend_governor::over_spend_cap()) {
+            audit_log::record(
+                (int) $job->id,
+                $userid,
+                self::STAGE,
+                audit_log::FAILURE,
+                "regenerate section {$index} refused: period spend cap reached",
+            );
+            return false;
+        }
+
         $result = $this->client->generate(
             $this->section_prompt($blueprint, $sections[$index]),
             $context,

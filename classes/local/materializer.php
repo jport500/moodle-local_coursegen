@@ -355,13 +355,7 @@ PROMPT;
      * @return bool True if within the cap.
      */
     private function spend_precheck(\stdClass $job, int $estimate): bool {
-        $cap = (int) (get_config('local_coursegen', 'cap_period_spend') ?: 0);
-        if ($cap <= 0) {
-            return true; // No cap configured.
-        }
-        $spent = $this->tenant_spent();
-        $threshold = (int) (get_config('local_coursegen', 'warn_threshold_pct') ?: 0);
-        if ($threshold > 0 && ($spent + $estimate) >= ($cap * $threshold / 100)) {
+        if (spend_governor::crosses_warn_threshold($estimate)) {
             $this->log(
                 $job,
                 null,
@@ -371,11 +365,12 @@ PROMPT;
                 null,
                 null,
                 null,
-                "approaching spend cap: {$spent}+{$estimate} of {$cap}",
+                'approaching spend cap: ' . spend_governor::period_spent()
+                    . "+{$estimate} of " . spend_governor::spend_cap(),
                 audit_log::SUCCESS
             );
         }
-        return ($spent + $estimate) <= $cap;
+        return !spend_governor::would_exceed($estimate);
     }
 
     /**
@@ -385,37 +380,16 @@ PROMPT;
      * @return bool
      */
     private function spend_exceeded(\stdClass $job): bool {
-        $cap = (int) (get_config('local_coursegen', 'cap_period_spend') ?: 0);
-        return $cap > 0 && $this->tenant_spent() > $cap;
+        return spend_governor::over_spend_cap();
     }
 
     /**
-     * Tenant spend so far, accumulated from the §10.2 token logs (generation units).
-     *
-     * @return int
-     */
-    private function tenant_spent(): int {
-        global $DB;
-        return (int) $DB->get_field_sql(
-            'SELECT COALESCE(SUM(COALESCE(tokensin, 0) + COALESCE(tokensout, 0)), 0) FROM {coursegen_log}'
-        );
-    }
-
-    /**
-     * Remaining image sub-cap budget (images used counted from the audit log).
+     * Remaining image sub-cap budget for this period (0 cap = unlimited).
      *
      * @return int
      */
     private function remaining_image_budget(): int {
-        global $DB;
-        $cap = (int) (get_config('local_coursegen', 'cap_image_count') ?: 0);
-        if ($cap <= 0) {
-            return PHP_INT_MAX; // No image cap configured.
-        }
-        $used = (int) $DB->get_field_sql(
-            'SELECT COALESCE(SUM(imagecount), 0) FROM {coursegen_log}'
-        );
-        return max(0, $cap - $used);
+        return spend_governor::image_remaining();
     }
 
     /**

@@ -42,5 +42,17 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026061601, 'local', 'coursegen');
     }
 
+    if ($oldversion < 2026061607) {
+        // P6: the original P0 default spend cap of 50 generation units predated
+        // token-scale estimates and silently hard-stops generation on installs
+        // that never changed it. Bump it to the current default, but ONLY where
+        // the stored value is still exactly the untouched old default — never
+        // overwrite a cap an administrator deliberately set.
+        if ((string) get_config('local_coursegen', 'cap_period_spend') === '50') {
+            set_config('cap_period_spend', '1000000', 'local_coursegen');
+        }
+        upgrade_plugin_savepoint(true, 2026061607, 'local', 'coursegen');
+    }
+
     return true;
 }

@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026061606;
+$plugin->version = 2026061607;
 $plugin->requires = 2025092600; // Moodle 5.1+ (codebase-confirmed floor; see docs/DECISIONS / CONTEXT.md).
 $plugin->maturity = MATURITY_ALPHA;
 $plugin->release = 'v0.1.0';

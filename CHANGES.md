@@ -3,6 +3,40 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.7.0 — 2026-06-16 (Phase 6: finalize & governance)
+
+Makes the plugin releasable: completion verified end-to-end, the spend cap made
+correct and complete, dependency floors pinned, and an operator smoke script.
+No new generation features.
+
+- **Completion gate (verified).** A new `completion_walkthrough_test` proves the
+  learner round-trip: submitting an inline knowledge check (`api::submit_attempt`,
+  the path the inline webservice drives) completes the activity, advances
+  format_pathway progress to 100%, and — with an activity criterion — drives
+  course completion. mod_knowledgecheck calls `completion->update_state()` on a
+  finished attempt, so an inline submit propagates completion exactly like an
+  activity view.
+- **Spend cap completeness (D16).** New `local\spend_governor` is the single
+  source of truth for the spend and image caps. Spend/images are totalled over a
+  **rolling window** (`period_days`, default 30) so the "per period" cap actually
+  resets, instead of summing all-time. The cap now gates **every** AI call site —
+  blueprint synthesis and section regeneration refuse before any call when the
+  tenant is already over cap, not just materialization. A cap of `0` means
+  unlimited (spend and images), now explicit in code and settings.
+- **cap=50 self-heal.** A `db/upgrade` step bumps the original P0 default of 50
+  generation units to the current default (1000000) **only** where the stored
+  value is still exactly `50` — never overwriting a value an admin set.
+- **Dependency floors** for `mod_knowledgecheck` / `filter_knowledgecheck` are
+  pinned to the build verified to contain the API surface we call.
+- **`MANUAL_SMOKE.md`** — an end-to-end operator smoke script plus governance
+  footguns (don't disable the filter on a tenant with generated courses; the
+  cap=50 gotcha; 0=unlimited; rolling window; provider-order routing).
+- **Cert-chain wrap deferred to P7 (D16).** The muprog/mucertify wrap is a real
+  two-plugin integration (program content-tree + certification link + cross-plugin
+  re-entrancy); it is out of scope for a finalize phase and optional/off-by-default,
+  so v1 ships without it. The `wrap_muprog`/`wrap_mucertify` toggles remain,
+  relabelled "not yet active".
+
 ## v0.6.0 — 2026-06-16 (Phase 5: assessments)
 
 Fulfils the blueprint's assessment spec by placing inline formative knowledge

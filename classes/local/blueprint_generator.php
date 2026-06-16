@@ -69,6 +69,12 @@ class blueprint_generator {
             return false;
         }
 
+        // Don't spend reasoning tokens for a tenant already over its period cap.
+        if (spend_governor::over_spend_cap()) {
+            $this->fail_job($job, $context, 'period spend cap reached');
+            return false;
+        }
+
         [$blocks, $tokens] = $this->gather_corpus($job);
         if ($blocks === []) {
             $this->fail_job($job, $context, 'empty corpus');

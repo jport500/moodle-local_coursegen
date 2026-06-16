@@ -133,6 +133,34 @@ final class section_regenerator_test extends \advanced_testcase {
     }
 
     /**
+     * A tenant over its period spend cap is refused before any AI call, and the
+     * refusal is audited.
+     *
+     * @return void
+     */
+    public function test_over_cap_refuses_before_call(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('cap_period_spend', '100', 'local_coursegen');
+        $job = $this->job_with_blueprint(job_manager::STATUS_AWAITING_REVIEW);
+        $DB->insert_record('coursegen_log', (object) [
+            'jobid' => $job->id, 'userid' => null, 'stage' => 'materialize', 'outcome' => 'success',
+            'detail' => 'prior spend', 'tokensin' => 200, 'tokensout' => 0, 'timecreated' => time(),
+        ]);
+
+        $stub = new stub_text_client([$this->ok($this->section_json('Rewritten'))]);
+        $this->assertFalse((new section_regenerator($stub))->regenerate($job, 0, 2));
+
+        $this->assertSame(0, $stub->call_count(), 'A reasoning call was made despite the cap.');
+        $this->assertEquals(1, blueprint_store::current_record($job->id)->version);
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
+            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%period spend cap%']
+        ));
+    }
+
+    /**
      * Create a job with a stored two-section blueprint.
      *
      * @param string $status The job status.

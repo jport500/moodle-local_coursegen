@@ -83,6 +83,32 @@ final class blueprint_generator_test extends \advanced_testcase {
     }
 
     /**
+     * A tenant already over its period spend cap is refused before any AI call.
+     *
+     * @return void
+     */
+    public function test_over_cap_refuses_before_call(): void {
+        global $DB;
+        $this->resetAfterTest();
+        set_config('cap_period_spend', '100', 'local_coursegen');
+        $DB->insert_record('coursegen_log', (object) [
+            'jobid' => 1, 'userid' => null, 'stage' => 'materialize', 'outcome' => 'success',
+            'detail' => 'prior spend', 'tokensin' => 200, 'tokensout' => 0, 'timecreated' => time(),
+        ]);
+        $job = $this->extracted_job(['A short paragraph about widgets and gears.']);
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json())]);
+        ob_start(); // The failure path emits an mtrace line for cron logs.
+        $ok = (new blueprint_generator($stub))->generate_for_job($job);
+        ob_end_clean();
+
+        $this->assertFalse($ok);
+        $this->assertSame(0, $stub->call_count(), 'A reasoning call was made despite the cap.');
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $this->assertSame(job_manager::STATUS_FAILED, $job->status);
+    }
+
+    /**
      * A corpus over the working budget is summarized in chunks, then synthesised.
      *
      * @return void
