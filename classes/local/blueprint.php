@@ -47,6 +47,12 @@ class blueprint {
     /** @var string Section with no assessment. */
     public const ASSESS_NONE = 'none';
 
+    /** @var int Estimated generation units (≈tokens) of reading content per section. */
+    public const EST_UNITS_PER_SECTION = 700;
+
+    /** @var int Estimated generation units per flagged image. */
+    public const EST_UNITS_PER_IMAGE = 1000;
+
     /** @var string Proposed course title. */
     private string $title = '';
 
@@ -177,6 +183,18 @@ class blueprint {
     }
 
     /**
+     * The generation cost estimate in abstract generation units (≈tokens),
+     * computed from the plan (SPEC §7). The single source of truth for the
+     * estimate, used at generation and recomputed on edit.
+     *
+     * @return int
+     */
+    public function estimate_units(): int {
+        return $this->section_count() * self::EST_UNITS_PER_SECTION
+            + $this->image_count() * self::EST_UNITS_PER_IMAGE;
+    }
+
+    /**
      * Serialize to the JSON stored in coursegen_blueprint.content.
      *
      * @return string
@@ -220,5 +238,85 @@ class blueprint {
         }
         $data = json_decode($json, true);
         return is_array($data) ? self::from_array($data) : new self();
+    }
+
+    /**
+     * Decode a model's JSON output into an array, tolerating Markdown code
+     * fences and surrounding prose by extracting the outermost object. Shared
+     * by full-blueprint synthesis and per-section regeneration.
+     *
+     * @param string $content The raw model output.
+     * @return array|null The decoded array, or null if no valid object found.
+     */
+    public static function decode_object(string $content): ?array {
+        $content = trim($content);
+        // Strip code fences without writing literal backticks in source.
+        $fence = preg_quote(str_repeat(chr(96), 3), '/');
+        $content = preg_replace('/^' . $fence . '(?:json)?\s*|\s*' . $fence . '$/i', '', $content);
+        $decoded = json_decode($content, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+        $start = strpos($content, '{');
+        $end = strrpos($content, '}');
+        if ($start !== false && $end !== false && $end > $start) {
+            $decoded = json_decode(substr($content, $start, $end - $start + 1), true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Build a blueprint from submitted edit-form data. Sections are ordered by
+     * their per-section order field; blank-titled rows (removed) are dropped.
+     *
+     * @param \stdClass $data The moodleform data (repeat_elements arrays).
+     * @return self
+     */
+    public static function from_form_data(\stdClass $data): self {
+        $blueprint = new self();
+        $blueprint->set_title((string) ($data->title ?? ''));
+        $blueprint->set_description((string) ($data->description ?? ''));
+
+        $titles = (array) ($data->sectiontitle ?? []);
+        $orders = (array) ($data->sectionorder ?? []);
+        $objectives = (array) ($data->sectionobjectives ?? []);
+        $contenttypes = (array) ($data->sectioncontenttype ?? []);
+        $summaries = (array) ($data->sectionsummary ?? []);
+        $images = (array) ($data->sectionimage ?? []);
+        $imagehints = (array) ($data->sectionimagehint ?? []);
+        $assesstypes = (array) ($data->sectionassesstype ?? []);
+        $assesscounts = (array) ($data->sectionassesscount ?? []);
+
+        $rows = [];
+        foreach ($titles as $i => $title) {
+            if (trim((string) $title) === '') {
+                continue;
+            }
+            $rows[] = [
+                'order' => (int) ($orders[$i] ?? ($i + 1)),
+                'section' => [
+                    'title' => (string) $title,
+                    'objectives' => preg_split('/\R/', (string) ($objectives[$i] ?? '')),
+                    'contenttype' => (string) ($contenttypes[$i] ?? self::CONTENT_PAGE),
+                    'summary' => (string) ($summaries[$i] ?? ''),
+                    'image' => [
+                        'generate' => !empty($images[$i]),
+                        'prompthint' => (string) ($imagehints[$i] ?? ''),
+                    ],
+                    'assessment' => [
+                        'type' => (string) ($assesstypes[$i] ?? self::ASSESS_NONE),
+                        'questioncount' => (int) ($assesscounts[$i] ?? 0),
+                    ],
+                ],
+            ];
+        }
+        usort($rows, static fn(array $a, array $b): int => $a['order'] <=> $b['order']);
+        foreach ($rows as $row) {
+            $blueprint->add_section($row['section']);
+        }
+        return $blueprint;
     }
 }

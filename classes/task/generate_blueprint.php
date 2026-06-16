@@ -28,6 +28,7 @@ use local_coursegen\local\ai\core_ai_text_client;
 use local_coursegen\local\ai\text_client;
 use local_coursegen\local\blueprint_generator;
 use local_coursegen\local\job_manager;
+use local_coursegen\local\review_gate;
 
 /**
  * Queued after extraction completes. Carries the requesting user's id so the
@@ -44,7 +45,12 @@ class generate_blueprint extends \core\task\adhoc_task {
     }
 
     /**
-     * Generate the blueprint for the job named in the custom data.
+     * Generate the blueprint, then apply the review-gate mode branch.
+     *
+     * Structured so "blueprinted" is a clean pass-through: generation runs only
+     * from "extracted", and the gate runs whenever the job is "blueprinted" —
+     * so if a prior attempt died after the blueprint was stored, a retry still
+     * advances it (to awaiting_review or approved) rather than stranding it.
      *
      * @return void
      */
@@ -58,12 +64,19 @@ class generate_blueprint extends \core\task\adhoc_task {
             mtrace("local_coursegen: job {$jobid} not found; skipping blueprint.");
             return;
         }
-        if ($job->status !== job_manager::STATUS_EXTRACTED) {
-            mtrace("local_coursegen: job {$jobid} not in 'extracted' state ({$job->status}); skipping blueprint.");
-            return;
+
+        if ($job->status === job_manager::STATUS_EXTRACTED) {
+            if (!(new blueprint_generator($this->get_text_client()))->generate_for_job($job)) {
+                return; // The generator already failed and logged the job.
+            }
+            $job = $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
         }
 
-        (new blueprint_generator($this->get_text_client()))->generate_for_job($job);
+        if ($job->status === job_manager::STATUS_BLUEPRINTED) {
+            review_gate::apply_after_generation($job);
+        } else {
+            mtrace("local_coursegen: job {$jobid} not ready for the gate ({$job->status}); skipping.");
+        }
     }
 
     /**

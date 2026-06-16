@@ -50,14 +50,31 @@ if (!$record) {
     return;
 }
 
-$blueprint = blueprint::from_json($record->content);
+$blueprint = \local_coursegen\local\blueprint::from_json($record->content);
 
 echo $OUTPUT->heading(format_string($blueprint->get_title()));
+echo html_writer::tag(
+    'p',
+    get_string('jobstatus', 'local_coursegen', get_string('status_' . $job->status, 'local_coursegen')),
+    ['class' => 'text-muted']
+);
 if ($blueprint->get_description() !== '') {
     echo html_writer::tag('p', format_text($blueprint->get_description(), FORMAT_PLAIN));
 }
 if ($job->estimatedspend !== null) {
     echo html_writer::tag('p', get_string('estimatedunits', 'local_coursegen', (int) $job->estimatedspend));
+}
+
+// Link to the editor/review gate for those who can edit or approve.
+if (
+    has_capability('local/coursegen:generate', $context)
+        || has_capability('local/coursegen:reviewgate', $context)
+) {
+    echo html_writer::div($OUTPUT->single_button(
+        new moodle_url('/local/coursegen/edit.php', ['jobid' => $job->id]),
+        get_string('editblueprint', 'local_coursegen'),
+        'get'
+    ));
 }
 
 foreach ($blueprint->get_sections() as $i => $section) {

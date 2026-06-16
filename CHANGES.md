@@ -3,6 +3,36 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.4.0 — 2026-06-16 (Phase 3: review gate, editing, regeneration)
+
+Puts the human gate on top of the blueprint. No course materialization, content,
+images, or assessments yet (P4+).
+
+- Mode branch (`review_gate`): after a blueprint exists, outline-first holds the
+  job at `awaiting_review`; automatic auto-approves to `approved`
+  (materialize-ready). Honors the per-tenant default, the per-run mode, and the
+  admin lock (D3). The `generate_blueprint` task applies the gate and is
+  structured so `blueprinted` is a clean pass-through (a retry still advances it).
+- Editing UI (`edit.php` + `edit_blueprint_form`): a native `repeat_elements`
+  form to edit course title/description and reorder/rename/add/remove sections
+  and their objectives, content type, image flag + hint, and assessment spec.
+  The estimate is recomputed and re-stored on save.
+- Per-section regeneration (`section_regenerator`): re-calls the reasoning tier
+  for one section through the P2 `text_client` seam — capability-gated,
+  §10.2-logged, same JSON tolerance/failure handling.
+- Versioning (`blueprint_store`): each edit/regeneration inserts a new current
+  `coursegen_blueprint` row (version + 1, `iscurrent`); prior versions are
+  retained. No schema change.
+- Approval: `local/coursegen:reviewgate` gates approve (enforced in
+  `review_gate::approve`). Editing/regeneration need `:generate` OR `:reviewgate`
+  so authors aren't locked out of their own draft. **Editing or regenerating an
+  already-approved job reopens it to `awaiting_review`** — no approved job points
+  at an unreviewed version.
+- DRY: estimate and JSON decoding moved onto `blueprint`; `blueprint_generator`
+  reuses them and `blueprint_store`.
+- `cli/gate.php` for an inspect/regenerate/approve smoke. Privacy unchanged —
+  versions are more `coursegen_blueprint` rows, already covered.
+
 ## v0.3.0 — 2026-06-16 (Phase 2: blueprint generation)
 
 Generates the editable course blueprint (IR) from a job's corpus via the

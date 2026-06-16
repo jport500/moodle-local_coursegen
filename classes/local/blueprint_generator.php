@@ -38,12 +38,6 @@ class blueprint_generator {
     /** @var int Fallback reasoning working budget if unconfigured (tokens). */
     private const DEFAULT_BUDGET_TOKENS = 12000;
 
-    /** @var int Estimated generation units (≈tokens) of reading content per section. */
-    private const EST_UNITS_PER_SECTION = 700;
-
-    /** @var int Estimated generation units per flagged image. */
-    private const EST_UNITS_PER_IMAGE = 1000;
-
     /** @var string Pipeline stage name for the audit log. */
     private const STAGE = 'blueprint';
 
@@ -68,6 +62,7 @@ class blueprint_generator {
      * @return bool True on success; false if the job was failed.
      */
     public function generate_for_job(\stdClass $job): bool {
+        global $DB;
         $context = \context::instance_by_id($job->contextid, IGNORE_MISSING);
         if (!$context) {
             $this->fail_job($job, null, 'context missing');
@@ -97,7 +92,7 @@ class blueprint_generator {
             return false;
         }
 
-        $decoded = $this->decode_json($result->content);
+        $decoded = blueprint::decode_object($result->content);
         if ($decoded === null) {
             $this->fail_job($job, $context, 'blueprint response was not valid JSON');
             return false;
@@ -108,8 +103,8 @@ class blueprint_generator {
             return false;
         }
 
-        $this->persist($job, $blueprint);
-        $this->store_estimate($job, $blueprint);
+        blueprint_store::save_new_version($job, $blueprint, (int) $job->userid);
+        $DB->set_field('coursegen_job', 'estimatedspend', $blueprint->estimate_units(), ['id' => $job->id]);
         $this->set_status($job, job_manager::STATUS_BLUEPRINTED);
         return true;
     }
@@ -238,46 +233,6 @@ class blueprint_generator {
     }
 
     /**
-     * Persist the blueprint as the current version for the job.
-     *
-     * @param \stdClass $job The job.
-     * @param blueprint $blueprint The blueprint to store.
-     * @return void
-     */
-    private function persist(\stdClass $job, blueprint $blueprint): void {
-        global $DB;
-        $now = time();
-        $DB->set_field('coursegen_blueprint', 'iscurrent', 0, ['jobid' => $job->id]);
-        $maxversion = (int) $DB->get_field('coursegen_blueprint', 'MAX(version)', ['jobid' => $job->id]);
-        $DB->insert_record('coursegen_blueprint', (object) [
-            'jobid' => $job->id,
-            'version' => $maxversion + 1,
-            'iscurrent' => 1,
-            'title' => \core_text::substr($blueprint->get_title(), 0, 255),
-            'intro' => $blueprint->get_description(),
-            'content' => $blueprint->to_json(),
-            'timecreated' => $now,
-            'timemodified' => $now,
-            'usermodified' => $job->userid,
-        ]);
-    }
-
-    /**
-     * Compute and store the generation cost estimate, in generation units
-     * (≈tokens), on the job (SPEC §7).
-     *
-     * @param \stdClass $job The job.
-     * @param blueprint $blueprint The blueprint.
-     * @return void
-     */
-    private function store_estimate(\stdClass $job, blueprint $blueprint): void {
-        global $DB;
-        $estimate = $blueprint->section_count() * self::EST_UNITS_PER_SECTION
-            + $blueprint->image_count() * self::EST_UNITS_PER_IMAGE;
-        $DB->set_field('coursegen_job', 'estimatedspend', $estimate, ['id' => $job->id]);
-    }
-
-    /**
      * Set the job status and bump timemodified.
      *
      * @param \stdClass $job The job.
@@ -330,33 +285,6 @@ class blueprint_generator {
      */
     private function budget_tokens(): int {
         return (int) (get_config('local_coursegen', 'reasoning_budget_tokens') ?: self::DEFAULT_BUDGET_TOKENS);
-    }
-
-    /**
-     * Decode the model's JSON output, tolerating code fences and surrounding
-     * prose by extracting the outermost object.
-     *
-     * @param string $content The raw model output.
-     * @return array|null The decoded array, or null if no valid object found.
-     */
-    private function decode_json(string $content): ?array {
-        $content = trim($content);
-        // Strip Markdown code fences without writing literal backticks in source.
-        $fence = preg_quote(str_repeat(chr(96), 3), '/');
-        $content = preg_replace('/^' . $fence . '(?:json)?\s*|\s*' . $fence . '$/i', '', $content);
-        $decoded = json_decode($content, true);
-        if (is_array($decoded)) {
-            return $decoded;
-        }
-        $start = strpos($content, '{');
-        $end = strrpos($content, '}');
-        if ($start !== false && $end !== false && $end > $start) {
-            $decoded = json_decode(substr($content, $start, $end - $start + 1), true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-        return null;
     }
 
     /**
