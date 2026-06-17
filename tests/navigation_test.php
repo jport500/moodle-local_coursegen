@@ -81,4 +81,32 @@ final class navigation_test extends \advanced_testcase {
             'The create-job link was shown to a user without the generate capability.'
         );
     }
+
+    /**
+     * A reviewer (reviewgate only, no generate) still gets the link, so they can
+     * reach the hub and the review action (D13/P13).
+     *
+     * @return void
+     */
+    public function test_link_visible_for_reviewer(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/local/coursegen/lib.php');
+        $this->resetAfterTest();
+
+        $category = $this->getDataGenerator()->create_category();
+        $context = \context_coursecat::instance($category->id);
+        $role = $this->getDataGenerator()->create_role();
+        assign_capability('local/coursegen:reviewgate', CAP_ALLOW, $role, $context->id);
+        $reviewer = $this->getDataGenerator()->create_user();
+        role_assign($role, $reviewer->id, $context->id);
+        $this->setUser($reviewer);
+        $node = \navigation_node::create('Category', null, \navigation_node::TYPE_CATEGORY);
+
+        local_coursegen_extend_navigation_category_settings($node, $context);
+
+        $this->assertNotFalse(
+            $node->find('local_coursegen_create', \navigation_node::TYPE_SETTING),
+            'The link was hidden from a reviewgate-only approver.'
+        );
+    }
 }

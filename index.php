@@ -36,7 +36,9 @@ if (!($context instanceof context_coursecat)) {
 }
 
 require_login();
-require_capability('local/coursegen:generate', $context);
+// Builders (:generate) and reviewers (:reviewgate) may both reach the hub; only
+// builders may create (enforced in the create action and on the Create button).
+job_manager::require_access($context);
 
 $huburl = new moodle_url('/local/coursegen/index.php', ['contextid' => $context->id]);
 $createurl = new moodle_url('/local/coursegen/index.php', ['contextid' => $context->id, 'action' => 'create']);
@@ -50,6 +52,7 @@ $PAGE->navbar->add(
 $PAGE->navbar->add(get_string('hubheading', 'local_coursegen'), $huburl);
 
 if ($action === 'create') {
+    require_capability('local/coursegen:generate', $context);
     $PAGE->set_url($createurl);
     $PAGE->set_title(get_string('createjob', 'local_coursegen'));
     $PAGE->set_heading(get_string('createjob', 'local_coursegen'));
@@ -112,10 +115,12 @@ $jobs = job_manager::jobs_in_context($context->id);
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('hubheading', 'local_coursegen'));
-echo html_writer::div(
-    $OUTPUT->single_button($createurl, get_string('createjob', 'local_coursegen'), 'get'),
-    'mb-3'
-);
+if (job_manager::can_create($context)) {
+    echo html_writer::div(
+        $OUTPUT->single_button($createurl, get_string('createjob', 'local_coursegen'), 'get'),
+        'mb-3'
+    );
+}
 
 if (!$jobs) {
     echo $OUTPUT->notification(get_string('hub_nojobs', 'local_coursegen'), 'info');

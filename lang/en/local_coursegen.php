@@ -70,6 +70,7 @@ $string['jobpage_failed'] = 'Generation failed: {$a}';
 $string['jobpage_failed_noreason'] = 'no reason recorded';
 $string['jobpage_opencourse'] = 'Open the course';
 $string['jobpage_processing'] = 'This job is being generated. It advances automatically as scheduled tasks run — this page refreshes itself, so you can leave it open.';
+$string['jobpage_refused'] = 'Your most recent rebuild was declined and the existing course was kept: {$a}';
 $string['jobpage_review'] = 'The blueprint is ready for your review.';
 $string['jobpage_reviewbutton'] = 'Review & approve';
 $string['jobqueued'] = 'Generation job {$a} created; source extraction has been queued.';

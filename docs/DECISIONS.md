@@ -531,6 +531,14 @@ through `fail()` (would run cleanup and destroy the wrap it is meant to protect)
 reuse-and-re-point (swap the program's course item to the rebuilt course in place,
 preserving allocations) rather than refusing; or gate on source configuration too.
 
+**Surfaced in the UI (P13).** The refusal was previously only in the audit log. The
+job page now shows it on the complete view, but must not be confused with the benign
+`outcome=failure` rows a normally-built course carries (a skipped knowledge check or
+image). So `refuse()` marks its log row with a distinct stage
+(`job_manager::STAGE_REBUILD_REFUSED`) and `job_manager::current_refusal()` returns it
+only while it is the job's latest log row — i.e. no later rebuild has written build
+rows after it. A clean complete job, and one carrying only skip failures, show nothing.
+
 ---
 
 ## D19 — Pre-pilot release posture: beta, declared floor matches what is verified (P9)

@@ -36,7 +36,7 @@ $job = $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
 $context = context::instance_by_id($job->contextid);
 
 require_login();
-require_capability('local/coursegen:generate', $context);
+job_manager::require_access($context);
 
 $url = new moodle_url('/local/coursegen/view.php', ['jobid' => $jobid]);
 $huburl = new moodle_url('/local/coursegen/index.php', ['contextid' => $context->id]);
@@ -92,6 +92,13 @@ switch ($phase) {
         break;
 
     case job_manager::PHASE_COMPLETE:
+        // A re-materialize that was refused (D18/D20) leaves the job complete with
+        // the existing course intact — surface that the rebuild was declined, but
+        // not the benign in-build skip failures a good course also carries.
+        $refusal = job_manager::current_refusal($job->id);
+        if ($refusal !== null) {
+            echo $OUTPUT->notification(get_string('jobpage_refused', 'local_coursegen', $refusal), 'warning');
+        }
         echo $OUTPUT->notification(get_string('jobpage_complete', 'local_coursegen'), 'success');
         if ($job->courseid && $DB->record_exists('course', ['id' => $job->courseid])) {
             echo html_writer::div(

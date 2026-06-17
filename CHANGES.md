@@ -3,6 +3,30 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.10.1 — 2026-06-17 (Phase 13: pre-pilot wayfinding polish)
+
+Two fixes on the P12 nav work; no new features (pipeline, guards, caps, wrap
+unchanged).
+
+- **Reviewer access (Fix A).** The hub, the job page and the category nav link
+  guarded on `:generate` alone, so a reviewgate-only approver was bounced before
+  reaching the review action `edit.php` already allows them. New testable helpers
+  `job_manager::can_access()` (generate OR reviewgate) and `can_create()`
+  (generate) now gate navigation/hub/job-page on access and the Create
+  action/button on create. A reviewer can navigate and approve but isn't offered
+  Create. (Admins bypass capabilities, so this is covered by unit tests with a
+  reviewgate-only role.)
+- **Refused-rebuild notice (Fix B).** A D18/D20 refusal leaves the job COMPLETE
+  with the reason only in the audit log, so an operator who edited a populated
+  course and re-approved landed on "course built, open it" with no hint the
+  rebuild was declined. The job page's complete view now shows the refusal. The
+  trap — a normally-built course also carries benign `outcome=failure` rows from
+  in-build skips (a skipped knowledge check/image) — is handled by marking the
+  refusal log row with a distinct stage (`STAGE_REBUILD_REFUSED`) at the source
+  and a `job_manager::current_refusal()` that returns it only while it is the
+  job's latest log row (cleared once a later rebuild supersedes it). A clean
+  complete job, and one carrying only skip failures, show nothing extra.
+
 ## v0.10.0 — 2026-06-17 (Phase 12: navigation & wayfinding)
 
 Connects the three pages so an operator is never stranded typing URLs or running

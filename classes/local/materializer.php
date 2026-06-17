@@ -688,7 +688,15 @@ PROMPT;
      */
     private function refuse(\stdClass $job, string $reason): void {
         $this->set_status($job, job_manager::STATUS_COMPLETE);
-        $this->log($job, null, null, null, null, null, null, null, $reason, audit_log::FAILURE);
+        // Mark with a distinct stage (no AI tokens, so not via log()/spend accrual)
+        // so the UI can tell a refusal apart from benign in-build skip failures (D20).
+        audit_log::record(
+            (int) $job->id,
+            (int) $job->userid,
+            job_manager::STAGE_REBUILD_REFUSED,
+            audit_log::FAILURE,
+            $reason
+        );
         mtrace("local_coursegen: materialize job {$job->id} refused: {$reason}");
     }
 

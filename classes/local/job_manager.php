@@ -75,6 +75,9 @@ class job_manager {
     /** @var string Wayfinding phase: a stage failed. */
     public const PHASE_FAILED = 'failed';
 
+    /** @var string Audit stage marking a re-materialize that was refused (D18/D20). */
+    public const STAGE_REBUILD_REFUSED = 'rebuild_refused';
+
     /** @var string Source status: awaiting extraction. */
     public const SOURCE_PENDING = 'pending';
 
@@ -267,6 +270,80 @@ class job_manager {
            ORDER BY j.timemodified DESC, j.id DESC",
             ['contextid' => $contextid]
         );
+    }
+
+    /**
+     * Whether the user may reach the course-builder UI for a context: a builder
+     * (:generate) or a reviewer (:reviewgate). Navigation, the hub and the job
+     * page use this; the Create action uses can_create() instead.
+     *
+     * @param \context $context The category context.
+     * @param int|\stdClass|null $user The user (defaults to the current user).
+     * @return bool
+     */
+    public static function can_access(\context $context, $user = null): bool {
+        return has_capability('local/coursegen:generate', $context, $user)
+            || has_capability('local/coursegen:reviewgate', $context, $user);
+    }
+
+    /**
+     * Whether the user may create a generation job (:generate). A reviewer who
+     * holds only :reviewgate can navigate and review but not create.
+     *
+     * @param \context $context The category context.
+     * @param int|\stdClass|null $user The user (defaults to the current user).
+     * @return bool
+     */
+    public static function can_create(\context $context, $user = null): bool {
+        return has_capability('local/coursegen:generate', $context, $user);
+    }
+
+    /**
+     * Throw unless the user may reach the builder UI for a context (can_access).
+     *
+     * @param \context $context The category context.
+     * @return void
+     * @throws \required_capability_exception
+     */
+    public static function require_access(\context $context): void {
+        if (!self::can_access($context)) {
+            throw new \required_capability_exception($context, 'local/coursegen:generate', 'nopermissions', '');
+        }
+    }
+
+    /**
+     * The reason a re-materialize was refused, if that refusal is the job's
+     * current state (D18/D20) — distinct from benign in-build skip failures.
+     *
+     * A refusal logs a STAGE_REBUILD_REFUSED row and (the guard runs before any
+     * build logging) is the last row written for that attempt. So the refusal is
+     * "current" only while no newer log row exists; a later successful rebuild
+     * writes build rows after it, clearing the notice. Returns null for a clean
+     * complete job and for one carrying only skip failures.
+     *
+     * @param int $jobid The job id.
+     * @return string|null The refusal reason, or null if none is current.
+     */
+    public static function current_refusal(int $jobid): ?string {
+        global $DB;
+        $rows = $DB->get_records(
+            'coursegen_log',
+            ['jobid' => $jobid, 'stage' => self::STAGE_REBUILD_REFUSED],
+            'timecreated DESC, id DESC',
+            'id, detail, timecreated',
+            0,
+            1
+        );
+        $refusal = reset($rows);
+        if (!$refusal) {
+            return null;
+        }
+        $superseded = $DB->record_exists_select(
+            'coursegen_log',
+            'jobid = :jobid AND (timecreated > :tc OR (timecreated = :tceq AND id > :id))',
+            ['jobid' => $jobid, 'tc' => $refusal->timecreated, 'tceq' => $refusal->timecreated, 'id' => $refusal->id]
+        );
+        return $superseded ? null : $refusal->detail;
     }
 
     /**

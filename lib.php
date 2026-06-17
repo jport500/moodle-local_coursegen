@@ -23,20 +23,20 @@
  */
 
 /**
- * Add a "Create a generation job" entry to a course category's settings
- * navigation for users who may generate there.
+ * Add a "Course builder" entry to a course category's settings navigation for
+ * users who may reach the builder there — a builder (:generate) or a reviewer
+ * (:reviewgate).
  *
- * The entry point (index.php) requires a course-category context id and the
- * local/coursegen:generate capability, so the link is offered only on a category
- * and only to users who hold the capability there — meaning it never appears
- * where it would not work.
+ * The entry point is a category-context hub, so the link is offered only on a
+ * category and only to users who can access it — meaning it never appears where
+ * it would not work.
  *
  * @param navigation_node $navigation The category settings node to extend.
  * @param context_coursecat $context The category context.
  * @return void
  */
 function local_coursegen_extend_navigation_category_settings(navigation_node $navigation, context_coursecat $context) {
-    if (!has_capability('local/coursegen:generate', $context)) {
+    if (!\local_coursegen\local\job_manager::can_access($context)) {
         return;
     }
     $navigation->add(

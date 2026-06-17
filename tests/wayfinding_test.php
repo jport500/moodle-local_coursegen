@@ -121,6 +121,88 @@ final class wayfinding_test extends \advanced_testcase {
     }
 
     /**
+     * Access helpers: a builder (:generate) may access and create; a reviewer
+     * (:reviewgate only) may access but not create; neither cap means no access.
+     * (An admin holds every capability, so only a split role exercises this.)
+     *
+     * @return void
+     */
+    public function test_can_access_and_can_create(): void {
+        $this->resetAfterTest();
+        $context = \context_coursecat::instance($this->getDataGenerator()->create_category()->id);
+
+        $builderrole = $this->getDataGenerator()->create_role();
+        assign_capability('local/coursegen:generate', CAP_ALLOW, $builderrole, $context->id);
+        $reviewerrole = $this->getDataGenerator()->create_role();
+        assign_capability('local/coursegen:reviewgate', CAP_ALLOW, $reviewerrole, $context->id);
+
+        $builder = $this->getDataGenerator()->create_user();
+        role_assign($builderrole, $builder->id, $context->id);
+        $reviewer = $this->getDataGenerator()->create_user();
+        role_assign($reviewerrole, $reviewer->id, $context->id);
+        $nobody = $this->getDataGenerator()->create_user();
+
+        $this->assertTrue(job_manager::can_access($context, $builder->id));
+        $this->assertTrue(job_manager::can_create($context, $builder->id));
+
+        $this->assertTrue(job_manager::can_access($context, $reviewer->id), 'A reviewer must be able to navigate.');
+        $this->assertFalse(job_manager::can_create($context, $reviewer->id), 'A reviewer must not be offered create.');
+
+        $this->assertFalse(job_manager::can_access($context, $nobody->id));
+        $this->assertFalse(job_manager::can_create($context, $nobody->id));
+    }
+
+    /**
+     * current_refusal distinguishes a real, current refusal from benign in-build
+     * skip failures, and clears once a later rebuild supersedes it.
+     *
+     * @return void
+     */
+    public function test_current_refusal(): void {
+        $this->resetAfterTest();
+
+        // 1. Clean complete (only a successful build row) — nothing to surface.
+        $this->log_row(101, 'materialize', 'success', 'built section', 100);
+        $this->assertNull(job_manager::current_refusal(101));
+
+        // 2. Complete carrying only a benign skip failure — nothing to surface.
+        $this->log_row(102, 'materialize', 'failure', 'knowledge check skipped (no questions)', 100);
+        $this->assertNull(job_manager::current_refusal(102));
+
+        // 3. Complete after a refused rebuild — the refusal is the latest row.
+        $this->log_row(103, 'materialize', 'success', 'built earlier', 100);
+        $this->log_row(103, job_manager::STAGE_REBUILD_REFUSED, 'failure', 'Re-materialize refused: 1 learner', 200);
+        $this->assertSame('Re-materialize refused: 1 learner', job_manager::current_refusal(103));
+
+        // 4. Refused, then a later successful rebuild supersedes it.
+        $this->log_row(104, job_manager::STAGE_REBUILD_REFUSED, 'failure', 'old refusal', 100);
+        $this->log_row(104, 'materialize', 'success', 'rebuilt section', 200);
+        $this->assertNull(job_manager::current_refusal(104));
+    }
+
+    /**
+     * Insert an audit-log row with an explicit time (for ordering).
+     *
+     * @param int $jobid The job id.
+     * @param string $stage The audit stage.
+     * @param string $outcome success or failure.
+     * @param string $detail The detail text.
+     * @param int $time The timecreated value.
+     * @return void
+     */
+    private function log_row(int $jobid, string $stage, string $outcome, string $detail, int $time): void {
+        global $DB;
+        $DB->insert_record('coursegen_log', (object) [
+            'jobid' => $jobid,
+            'userid' => null,
+            'stage' => $stage,
+            'outcome' => $outcome,
+            'detail' => $detail,
+            'timecreated' => $time,
+        ]);
+    }
+
+    /**
      * Insert a bare job row in a context with a fixed timemodified (for ordering).
      *
      * @param int $contextid The category context id.
