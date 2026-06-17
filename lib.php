@@ -40,7 +40,7 @@ function local_coursegen_extend_navigation_category_settings(navigation_node $na
         return;
     }
     $navigation->add(
-        get_string('createjob', 'local_coursegen'),
+        get_string('hubheading', 'local_coursegen'),
         new moodle_url('/local/coursegen/index.php', ['contextid' => $context->id]),
         navigation_node::TYPE_SETTING,
         null,

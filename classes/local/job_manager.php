@@ -63,6 +63,18 @@ class job_manager {
     /** @var string Job status: a stage failed. */
     public const STATUS_FAILED = 'failed';
 
+    /** @var string Wayfinding phase: the pipeline is running, nothing for the operator to do yet. */
+    public const PHASE_PROCESSING = 'processing';
+
+    /** @var string Wayfinding phase: the operator must review and approve the blueprint. */
+    public const PHASE_REVIEW = 'review';
+
+    /** @var string Wayfinding phase: the course has been built. */
+    public const PHASE_COMPLETE = 'complete';
+
+    /** @var string Wayfinding phase: a stage failed. */
+    public const PHASE_FAILED = 'failed';
+
     /** @var string Source status: awaiting extraction. */
     public const SOURCE_PENDING = 'pending';
 
@@ -218,6 +230,64 @@ class job_manager {
             $fs->get_area_files($context->id, self::COMPONENT, self::FILEAREA_SOURCE, $jobid, 'filename', false),
             static fn(\stored_file $f): bool => !$f->is_directory()
         );
+    }
+
+    /**
+     * The wayfinding phase a status belongs to: which kind of job page the
+     * operator should land on (PHASE_PROCESSING|PHASE_REVIEW|PHASE_COMPLETE|
+     * PHASE_FAILED). Both modes share this map — automatic never stops at
+     * awaiting_review, outline-first does.
+     *
+     * @param string $status A STATUS_* value.
+     * @return string A PHASE_* value.
+     */
+    public static function classify_status(string $status): string {
+        return match ($status) {
+            self::STATUS_AWAITING_REVIEW => self::PHASE_REVIEW,
+            self::STATUS_COMPLETE => self::PHASE_COMPLETE,
+            self::STATUS_FAILED => self::PHASE_FAILED,
+            default => self::PHASE_PROCESSING,
+        };
+    }
+
+    /**
+     * Jobs in a category context, newest activity first, each with its current
+     * blueprint title (null when none yet). Powers the category hub.
+     *
+     * @param int $contextid The category context id.
+     * @return \stdClass[] Rows of (id, status, mode, timecreated, timemodified, courseid, title).
+     */
+    public static function jobs_in_context(int $contextid): array {
+        global $DB;
+        return $DB->get_records_sql(
+            "SELECT j.id, j.status, j.mode, j.timecreated, j.timemodified, j.courseid, b.title
+               FROM {coursegen_job} j
+          LEFT JOIN {coursegen_blueprint} b ON b.jobid = j.id AND b.iscurrent = 1
+              WHERE j.contextid = :contextid
+           ORDER BY j.timemodified DESC, j.id DESC",
+            ['contextid' => $contextid]
+        );
+    }
+
+    /**
+     * The most recent failure reason recorded for a job (§10.2 audit log), for
+     * surfacing on a failed job page.
+     *
+     * @param int $jobid The job id.
+     * @return string|null The detail, or null if none recorded.
+     */
+    public static function failure_reason(int $jobid): ?string {
+        global $DB;
+        $records = $DB->get_records(
+            'coursegen_log',
+            ['jobid' => $jobid, 'outcome' => audit_log::FAILURE],
+            'timecreated DESC, id DESC',
+            'id, detail',
+            0,
+            1
+        );
+        $row = reset($records);
+        return $row ? $row->detail : null;
     }
 
     /**

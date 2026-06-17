@@ -28,9 +28,12 @@ round-trip.
 ## 1. Create a job and ingest source
 
 Through the UI — open a course **category**, then its settings (the category
-cog / "Category settings" menu) → **Create a generation job** (visible to users
-with `local/coursegen:generate` in that category) → upload a file or enter a
-topic. Or via CLI:
+cog / "Category settings" menu) → **Course builder** (visible to users with
+`local/coursegen:generate` in that category). That hub lists the category's jobs;
+click **Create a generation job** → upload a file or enter a topic. On submit you
+land on the **job page**, which shows progress and refreshes itself as the
+scheduled tasks run (processing → review → complete), links to the built course
+when done, and shows the reason if a stage fails. Or via CLI:
 
 ```
 php local/coursegen/cli/extract.php --file=/path/to/source.pdf --categoryid=<catid>

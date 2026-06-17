@@ -3,6 +3,31 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.10.0 — 2026-06-17 (Phase 12: navigation & wayfinding)
+
+Connects the three pages so an operator is never stranded typing URLs or running
+tasks blind. No new generation features — the pipeline, guards (D18/D20), caps and
+wrap are unchanged.
+
+- **Category hub.** `index.php?contextid=N` is now a hub that lists the category's
+  generation jobs (status + last-updated, each row links to its job page) with a
+  **Create a generation job** action. The create form moved to
+  `index.php?contextid=N&action=create` and, on submit, **redirects to the job
+  page** instead of a flash notification on a dead page. The P11 category link is
+  unchanged (it now lands on the hub) and relabelled "Course builder".
+- **Status-aware job page.** `view.php?jobid=N` dispatches on the job's status
+  (via a new `job_manager::classify_status()` phase map): *processing* shows a
+  progress view with a light Moodle meta-refresh and a "advances as scheduled
+  tasks run" note; *awaiting_review* shows a prominent **Review & approve** button
+  to `edit.php`; *complete* links to the built (hidden) course with an unhide
+  nudge; *failed* shows the reason from the audit log. Handles both modes
+  (automatic runs processing→complete; outline-first stops at review). The
+  blueprint rendering is reused, not rebuilt.
+- **Breadcrumbs** (category → Course builder → Job → Review) on the hub, job page,
+  and edit page, so back-navigation works.
+- New testable logic: `job_manager::classify_status()`, `jobs_in_context()`, and
+  `failure_reason()`.
+
 ## v0.9.2 — 2026-06-16 (Phase 11: entry-point navigation)
 
 - **A real entry point.** Until now the generation page was reachable only by

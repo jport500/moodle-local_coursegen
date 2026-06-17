@@ -48,11 +48,19 @@ if (
 
 $pageurl = new moodle_url('/local/coursegen/edit.php', ['jobid' => $jobid]);
 $viewurl = new moodle_url('/local/coursegen/view.php', ['jobid' => $jobid]);
+$huburl = new moodle_url('/local/coursegen/index.php', ['contextid' => $context->id]);
 $PAGE->set_context($context);
 $PAGE->set_url($pageurl);
 $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('editblueprint', 'local_coursegen'));
 $PAGE->set_heading(get_string('editblueprint', 'local_coursegen'));
+$PAGE->navbar->add(
+    $context->get_context_name(false),
+    new moodle_url('/course/management.php', ['categoryid' => $context->instanceid])
+);
+$PAGE->navbar->add(get_string('hubheading', 'local_coursegen'), $huburl);
+$PAGE->navbar->add(get_string('hub_untitled', 'local_coursegen', $job->id), $viewurl);
+$PAGE->navbar->add(get_string('editblueprint', 'local_coursegen'), $pageurl);
 
 $blueprint = blueprint_store::load_current($jobid);
 if ($blueprint === null) {
