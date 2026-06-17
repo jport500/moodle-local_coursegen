@@ -418,6 +418,11 @@ already-over-cap tenant); or the cert/CE ICP makes the wrap a default expectatio
 
 ## D17 — Cert-chain wrap is built: in-band, best-effort, runtime soft-check (P7)
 
+> **SUPERSEDED (P18, see D24).** The cert/program wrap was removed: credentialing via
+> muprog/mucertify is out of scope for a course-building tool. `cert_wrap`, the
+> `wrap_muprog`/`wrap_mucertify` toggles, and the muprog/mucertify integration are gone.
+> The amendments below (P16 allocation source, etc.) are historical.
+
 **Decision.** The `wrap_muprog` / `wrap_mucertify` toggles (D10/D16) are now wired
 via `local\cert_wrap`. At the end of `materialize()`, if `wrap_muprog` is on the
 generated course is placed in a `tool_muprog` program (`program::create` +
@@ -492,6 +497,12 @@ source row's existence.
 ---
 
 ## D18 — Re-materialize refuses rather than destroy a populated wrap (P8)
+
+> **REMOVED (P18, see D24).** This decision was wrap-specific (refusing when a muprog
+> program had allocations or a mucertify certification had assignments). With the wrap
+> gone, the populated-wrap refusal is removed. The COURSE-protective refusal — refusing a
+> destructive re-materialize when the course itself has real enrolments/completion — was
+> always a separate decision (D20) and stays.
 
 **Decision.** The D17 "cleanup removes prior, rebuild fresh" path is destructive:
 `tool_muprog\local\program::delete` hard-cascades — it deletes every
@@ -764,3 +775,40 @@ fails once would be permanently blocked from completing).
 
 **Revisit if.** Operators want per-section pass marks or attempt limits surfaced in the
 review UI; or a quiz should also support non-gating "graded but optional" placement.
+
+---
+
+## D24 — Remove the certification/program wrap; credentialing is out of scope (P18)
+
+**Decision.** The optional cert/program wrap (D10/D16/D17, with the P16 allocation-source
+fix and the D18 populated-wrap refusal) is removed. `classes/local/cert_wrap.php`, the
+`wrap_muprog`/`wrap_mucertify` settings, the muprog/mucertify soft-dependency wiring, and
+the D18 refusal branch are deleted. `local_coursegen` is a course-building tool;
+credentialing via tool_muprog/tool_mucertify is out of scope — an operator can wrap a
+generated course into a program/certification themselves, and P19 adds a
+mod_coursecertificate activity slot for the common "certificate of completion" case.
+
+**Course-protective machinery stays.** The removal is surgical: it takes out only the
+wrap. The guards that protect the COURSE itself are untouched —
+`materializer::course_learner_state_reason` (D20, refuse a destructive re-materialize when
+the course has real enrolments/completion), the rebuild-refusal surfacing (P13: `refuse()`,
+`STAGE_REBUILD_REFUSED`, `current_refusal()`, the complete-view notice), and the
+course-completion criteria (D22). The refuse machinery simply loses its D18 (wrap) trigger
+and keeps firing on the D20 (course-learner-state) one. With muprog gone, D20's guard no
+longer needs to exclude muprog enrolments, so it simplifies to "any real enrolment or
+completion".
+
+**Why.** Owning a credentialing integration inside a course builder was scope creep: it
+coupled the plugin to two external plugins, carried a fragile multi-plugin allocation/
+certification flow (the P16 inert-certification bug is evidence of the surface area), and
+duplicated what the stack already does. A course builder should build courses well and
+leave credentialing to the credentialing tools (or a simple in-course certificate
+activity).
+
+**Rejected.** Keeping the wrap behind its off-by-default toggles (still carries the
+coupling and the maintenance surface for a feature outside the tool's job); keeping muprog
+as a soft dependency "just in case" (dead code path).
+
+**Revisit if.** Credentialing becomes a core requirement of the builder itself (rather
+than an operator/stack concern) — re-introduce it as a deliberately-scoped integration,
+not an in-band materialize step.

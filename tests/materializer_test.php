@@ -30,7 +30,6 @@ use local_coursegen\local\ai\stub_text_client;
 use local_coursegen\local\ai\text_result;
 use local_coursegen\local\blueprint;
 use local_coursegen\local\blueprint_store;
-use local_coursegen\local\cert_wrap;
 use local_coursegen\local\job_manager;
 use local_coursegen\local\materializer;
 use local_coursegen\local\review_gate;
@@ -578,106 +577,6 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
-     * A re-materialize against a populated wrap is refused, leaving the existing
-     * course, program, certification and the learner's allocation intact (D18).
-     *
-     * @return void
-     */
-    public function test_populated_wrap_refuses_rematerialize(): void {
-        global $DB;
-        if (!cert_wrap::program_available() || !cert_wrap::certification_available()) {
-            $this->markTestSkipped('tool_muprog / tool_mucertify not available.');
-        }
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        set_config('wrap_muprog', 1, 'local_coursegen');
-        set_config('wrap_mucertify', 1, 'local_coursegen');
-        $job = $this->approved_job_with([
-            ['title' => 'Only', 'summary' => 's', 'assessment' => ['type' => 'none']],
-        ]);
-
-        // First materialize builds the course and the wrap.
-        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
-            ->materialize($job));
-        $firstcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
-        $idnumber = cert_wrap::IDNUMBER_PREFIX . $job->id;
-        $program = $DB->get_record('tool_muprog_program', ['idnumber' => $idnumber], '*', MUST_EXIST);
-        $cert = $DB->get_record('tool_mucertify_certification', ['idnumber' => $idnumber], '*', MUST_EXIST);
-
-        // An admin allocates a learner to the program (populating it).
-        $learner = $this->getDataGenerator()->create_user();
-        $now = time();
-        $DB->insert_record('tool_muprog_allocation', (object) [
-            'programid' => $program->id,
-            'userid' => $learner->id,
-            'sourceid' => 0,
-            'archived' => 0,
-            'timeallocated' => $now,
-            'timestart' => $now,
-            'calendarupdated' => 0,
-            'itemscompleted' => 0,
-            'timecreated' => $now,
-        ]);
-
-        // A post-edit reopen re-runs materialize: it must refuse, not rebuild.
-        $DB->set_field('coursegen_job', 'status', job_manager::STATUS_APPROVED, ['id' => $job->id]);
-        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
-
-        ob_start(); // The refusal emits an mtrace line.
-        $ok = (new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
-            ->materialize($job);
-        ob_end_clean();
-
-        $this->assertFalse($ok, 'Re-materialize was not refused.');
-        // The live course is unchanged, so the job stays COMPLETE — not FAILED (D18).
-        $this->assertSame(
-            job_manager::STATUS_COMPLETE,
-            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
-        );
-
-        // Nothing was destroyed: course, program, certification, allocation all intact.
-        $this->assertTrue(
-            $DB->record_exists('course', ['id' => $firstcourse]),
-            'The existing course was deleted by a refused re-materialize.'
-        );
-        $this->assertTrue($DB->record_exists('tool_muprog_program', ['id' => $program->id]));
-        $this->assertTrue($DB->record_exists('tool_mucertify_certification', ['id' => $cert->id]));
-        $this->assertEquals(
-            1,
-            $DB->count_records('tool_muprog_allocation', ['programid' => $program->id]),
-            'The learner allocation was wiped.'
-        );
-
-        // The refusal is audited with an actionable reason.
-        $this->assertTrue($DB->record_exists_select(
-            'coursegen_log',
-            'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
-            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%Re-materialize refused%']
-        ));
-
-        // Retry path: the admin clears the allocation, then edits + re-approves —
-        // the wrap is now empty, so the rebuild proceeds (D18).
-        $DB->delete_records('tool_muprog_allocation', ['programid' => $program->id]);
-        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
-        review_gate::reopen_for_reedit($job, 2); // COMPLETE -> awaiting_review.
-        $this->assertSame(job_manager::STATUS_AWAITING_REVIEW, $job->status);
-        review_gate::approve($job, 2);            // Awaiting_review -> approved.
-
-        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
-            ->materialize($job));
-        $secondcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
-        $this->assertNotEquals($firstcourse, $secondcourse, 'The rebuild did not replace the course.');
-        $this->assertFalse($DB->record_exists('course', ['id' => $firstcourse]));
-        $this->assertSame(
-            job_manager::STATUS_COMPLETE,
-            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
-        );
-        // The wrap was rebuilt fresh: exactly one program and one certification.
-        $this->assertEquals(1, $DB->count_records('tool_muprog_program', ['idnumber' => $idnumber]));
-        $this->assertEquals(1, $DB->count_records('tool_mucertify_certification', ['idnumber' => $idnumber]));
-    }
-
-    /**
      * Regression guard: a freshly built course with no learners rebuilds cleanly
      * — the course-state guard must NOT fire on the zero baseline (D20).
      *
@@ -749,7 +648,7 @@ final class materializer_test extends \advanced_testcase {
         $this->assertTrue($DB->record_exists_select(
             'coursegen_log',
             'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
-            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%directly-enrolled learner%']
+            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%enrolled learner%']
         ));
 
         // Retry after unenrolling: the rebuild now proceeds.

@@ -25,13 +25,13 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026061618;
+$plugin->version = 2026061619;
 // Verified floor: only Moodle 5.2 (2026042000) on PHP 8.3 has been exercised. The
 // code uses no 5.2-only APIs, but the declared floor reflects what is actually
 // tested rather than an unverified 5.1/PHP 8.2 claim (see docs/DECISIONS D19).
 $plugin->requires = 2026042000;
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v0.13.0';
+$plugin->release = 'v0.14.0';
 $plugin->dependencies = [
     // Generated courses default to the format_pathway course format (DECISIONS D10).
     'format_pathway' => 2025021586,
@@ -40,9 +40,4 @@ $plugin->dependencies = [
     // Assessed sections are placed as formative knowledge checks (DECISIONS D15).
     'mod_knowledgecheck' => 2026051800,
     'filter_knowledgecheck' => 2026051800,
-    // The tool_muprog / tool_mucertify plugins are deliberately NOT listed: the
-    // cert-chain wrap is optional and off by default, so it must not force the
-    // cert stack onto every tenant. local\cert_wrap soft-checks for them at
-    // runtime and skips with a warning when a toggle is on but the plugin/API is
-    // absent (DECISIONS D17).
 ];

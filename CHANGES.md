@@ -3,6 +3,27 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.14.0 — 2026-06-17 (Phase 18: remove the cert/program wrap)
+
+Removes the certification/program wrapper — credentialing via muprog/mucertify is out
+of scope for a course-building tool. No new features; careful surgery. See DECISIONS
+D24 (D17 superseded, D18 removed).
+
+- **Removed:** `classes/local/cert_wrap.php` and its test; the `wrap_muprog` /
+  `wrap_mucertify` settings (and their strings; a db/upgrade step nulls the orphaned
+  config); the muprog/mucertify soft-dependency comment in version.php; the
+  `cert_wrap` wrap/cleanup calls in the materializer; and the D18 populated-wrap branch
+  of the re-materialize refusal.
+- **Kept (guards the course, not the wrap):** the D20 refusal —
+  `course_learner_state_reason` still refuses a destructive re-materialize when the
+  course itself has real enrolments or completion — plus the P13 refusal surfacing
+  (`refuse`, `STAGE_REBUILD_REFUSED`, `current_refusal`, the complete-view notice) and
+  the P15 course-completion criteria. The refuse machinery just loses its D18 trigger.
+- **Simplified:** with muprog gone, the D20 guard no longer excludes muprog enrolments
+  — it now counts any real enrolment or completion.
+- Credentialing is left to the stack (or to a mod_coursecertificate activity, the slot
+  for which P19 adds).
+
 ## v0.13.0 — 2026-06-17 (Phase 17: real graded quiz)
 
 Adds a third assessment type — a real, graded, summative `mod_quiz` — distinct from

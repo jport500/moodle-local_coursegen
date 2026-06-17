@@ -161,42 +161,4 @@ if ($hassiteconfig) {
         get_string('setting_image_optin_default_desc', 'local_coursegen'),
         0
     ));
-
-    // Optional composition with the wider stack (SPEC §9, DECISIONS D10).
-    // Toggles are only offered when the target plugin is installed.
-    $tools = core_component::get_plugin_list('tool');
-
-    if (isset($tools['muprog']) || isset($tools['mucertify'])) {
-        $settings->add(new admin_setting_heading(
-            'local_coursegen/heading_compose',
-            get_string('setting_heading_compose', 'local_coursegen'),
-            get_string('setting_heading_compose_desc', 'local_coursegen')
-        ));
-    }
-
-    if (isset($tools['muprog'])) {
-        $settings->add(new admin_setting_configcheckbox(
-            'local_coursegen/wrap_muprog',
-            get_string('setting_wrap_muprog', 'local_coursegen'),
-            get_string('setting_wrap_muprog_desc', 'local_coursegen'),
-            0
-        ));
-    }
-
-    if (isset($tools['mucertify'])) {
-        $settings->add(new admin_setting_configcheckbox(
-            'local_coursegen/wrap_mucertify',
-            get_string('setting_wrap_mucertify', 'local_coursegen'),
-            get_string('setting_wrap_mucertify_desc', 'local_coursegen'),
-            0
-        ));
-        // A certification wraps a program, so the program wrap must be on too.
-        if (isset($tools['muprog'])) {
-            $settings->hide_if(
-                'local_coursegen/wrap_mucertify',
-                'local_coursegen/wrap_muprog',
-                'notchecked'
-            );
-        }
-    }
 }

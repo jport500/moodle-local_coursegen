@@ -70,5 +70,13 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026061615, 'local', 'coursegen');
     }
 
+    if ($oldversion < 2026061619) {
+        // P18 (D24): the cert/program wrap was removed (credentialing is out of
+        // scope for a course builder). Null the orphaned wrap settings.
+        unset_config('wrap_muprog', 'local_coursegen');
+        unset_config('wrap_mucertify', 'local_coursegen');
+        upgrade_plugin_savepoint(true, 2026061619, 'local', 'coursegen');
+    }
+
     return true;
 }

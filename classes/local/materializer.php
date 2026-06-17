@@ -115,22 +115,17 @@ class materializer {
             return false;
         }
 
-        // Refuse rather than destroy live learner state on a re-materialize: the
-        // wrap's allocations/assignments (D18) AND the course's own enrolments and
-        // completion (D20). Runs BEFORE any cleanup, so a refusal leaves the
-        // existing course, program and certification fully intact.
-        $clauses = array_filter([
-            (new cert_wrap())->populated_block_reason($job),
-            $this->course_learner_state_reason($job),
-        ]);
-        if ($clauses) {
+        // Refuse rather than destroy the course's live learner state on a
+        // re-materialize (D20). Runs BEFORE any cleanup, so a refusal leaves the
+        // existing course fully intact.
+        $reason = $this->course_learner_state_reason($job);
+        if ($reason !== null) {
             $this->refuse(
                 $job,
                 'Re-materialize refused: rebuilding would destroy live learner state — '
-                    . implode('; ', $clauses)
-                    . '. Unenrol or migrate the affected learners and clear any program allocations or'
-                    . ' certification assignments before editing and re-approving to rebuild.'
-                    . ' The existing course is left live and unchanged.'
+                    . $reason
+                    . '. Unenrol or migrate the affected learners before editing and re-approving'
+                    . ' to rebuild. The existing course is left live and unchanged.'
             );
             return false;
         }
@@ -198,11 +193,8 @@ class materializer {
         }
 
         // Require completion of every tracked activity so course completion fires
-        // and propagates to the cert chain (D22). Runs after all activities exist.
+        // (D22). Runs after all activities exist.
         self::configure_course_completion((int) $course->id);
-
-        // Optional, best-effort cert-chain wrap (D17) — never fails the job.
-        (new cert_wrap())->wrap($job, $course, $context);
 
         $this->set_status($job, job_manager::STATUS_COMPLETE);
         return true;
@@ -973,9 +965,7 @@ PROMPT;
      * The course's own live-learner-state clause for a refusal, or null if none
      * (D20). A freshly-built course has zero enrolments and zero completion, so
      * any of these is a genuine addition that delete_course would destroy:
-     *  - learners enrolled by a route OTHER than the program wrap (manual, self,
-     *    cohort, …); wrap enrolments are counted by cert_wrap instead, so they are
-     *    not double-reported here;
+     *  - any enrolled learner (manual, self, cohort, …);
      *  - real completion progress (a finished activity, or course completion).
      *
      * @param \stdClass $job The job.
@@ -992,11 +982,11 @@ PROMPT;
             "SELECT COUNT(DISTINCT ue.userid)
                FROM {user_enrolments} ue
                JOIN {enrol} e ON e.id = ue.enrolid
-              WHERE e.courseid = :courseid AND e.enrol <> :muprog",
-            ['courseid' => $job->courseid, 'muprog' => 'muprog']
+              WHERE e.courseid = :courseid",
+            ['courseid' => $job->courseid]
         );
         if ($enrolled > 0) {
-            $parts[] = "the course has {$enrolled} directly-enrolled learner(s)";
+            $parts[] = "the course has {$enrolled} enrolled learner(s)";
         }
 
         $progress = (int) $DB->get_field_sql(
@@ -1028,10 +1018,6 @@ PROMPT;
      */
     private function cleanup_partial_course(\stdClass $job): void {
         global $DB, $CFG;
-        // Remove any program/certification wrap from a prior attempt (D17) before
-        // rebuilding, so a retry can never strand or duplicate one. Keyed on the
-        // job idnumber, so it runs even when no course id is recorded.
-        (new cert_wrap())->cleanup($job);
         if (empty($job->courseid)) {
             return;
         }
