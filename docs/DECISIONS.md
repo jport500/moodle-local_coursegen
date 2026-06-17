@@ -722,3 +722,45 @@ correctly — the gap was purely the missing criteria).
 **Revisit if.** A course type wants partial/weighted completion (e.g. complete N of M
 sections) — switch the aggregation to ANY or a points model; or completion should also
 require a passing grade once the real graded quiz (P16) lands.
+
+---
+
+## D23 — Real graded quiz: summative, pass-to-complete, human-selected (P17)
+
+**Decision.** A third assessment type, `ASSESS_QUIZ = 'quiz'` (reclaimed in P14/D21),
+builds an actual graded `mod_quiz` — summative, distinct from the formative inline
+knowledge check (D15). It is a **separate, visible click-through activity** (a graded
+exam has no inline render), generated and banked through the same quizgenpro seam the
+knowledge check uses. Completion is **pass-based**: `completionpassgrade` + a
+grade-to-pass of 50/100, so passing yields `COMPLETION_COMPLETE_PASS` (which the P15
+course criteria count) and a graded-but-failed attempt yields `COMPLETION_COMPLETE_FAIL`
+(which they do not) — the exam genuinely gates course completion (and, if wrapped, the
+certificate). Defaults: unlimited attempts (a learner can retake to pass, since failing
+blocks completion), highest grade, no time limit, review after the attempt and once
+closed — all tunable post-build. Selection is **human-only**: the AI vocabulary stays
+`{none, knowledgecheck}` and never emits a quiz; "Quiz" is a deliberate review-UI choice
+(promote a section — usually the last — to a graded exam). Completes D15 (which deferred
+the graded quiz when it swapped the formative vehicle to the knowledge check).
+
+The P14 one-tracked-activity-per-section rule generalizes: if a KC **or** a quiz was
+built the reading label is `COMPLETION_TRACKING_NONE` and the assessment is the tracked
+activity; on a generation/banking skip (D14) the label reverts to `MANUAL` so the
+section is never uncompletable. P15's `configure_course_completion` already requires
+every tracked CM, so the quiz is automatically part of course completion. Re-entrancy is
+unchanged (the quiz lives in the course; `delete_course` removes it on rebuild), and
+quiz-generation cost stays outside the coursegen spend cap (D13).
+
+**Why.** The knowledge check is a formative check-for-understanding; certification and
+real assessment need a summative, graded, pass-or-fail exam. Building a real `mod_quiz`
+(rather than grading the KC) reuses Moodle's full quiz/grade/review machinery and lets
+operators tune it. Pass-to-complete makes the exam the gate, which is the point of a
+graded assessment in a cert chain.
+
+**Rejected.** Grading the knowledge check instead of a real quiz (the KC is formative by
+design, D15; conflating the two repeats the P5 mistake); complete-on-submit rather than
+pass (loses the summative gate); AI emitting quiz sections (a graded exam is a
+deliberate human decision, not a generation default); a single attempt (a learner who
+fails once would be permanently blocked from completing).
+
+**Revisit if.** Operators want per-section pass marks or attempt limits surfaced in the
+review UI; or a quiz should also support non-gating "graded but optional" placement.

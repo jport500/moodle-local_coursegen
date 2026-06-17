@@ -43,9 +43,12 @@ class blueprint {
      */
     public const CONTENT_INLINE = 'inline';
 
-    /** @var string Section assessed with an inline knowledge check (D21). The value
-     * 'quiz' is reserved for a real graded quiz (P15). */
+    /** @var string Section assessed with an inline formative knowledge check (D21). */
     public const ASSESS_KNOWLEDGECHECK = 'knowledgecheck';
+
+    /** @var string Section assessed with a separate, graded, summative quiz (D23).
+     * A human-only choice in review — the AI never emits this type. */
+    public const ASSESS_QUIZ = 'quiz';
 
     /** @var string Section with no assessment. */
     public const ASSESS_NONE = 'none';
@@ -105,8 +108,12 @@ class blueprint {
 
         $image = (array) ($section['image'] ?? []);
         $assessment = (array) ($section['assessment'] ?? []);
-        $assesstype = ($assessment['type'] ?? self::ASSESS_NONE) === self::ASSESS_KNOWLEDGECHECK
-            ? self::ASSESS_KNOWLEDGECHECK : self::ASSESS_NONE;
+        $assesstype = in_array(
+            $assessment['type'] ?? self::ASSESS_NONE,
+            [self::ASSESS_KNOWLEDGECHECK, self::ASSESS_QUIZ],
+            true
+        )
+            ? $assessment['type'] : self::ASSESS_NONE;
 
         $this->sections[] = [
             'title' => trim((string) ($section['title'] ?? '')),

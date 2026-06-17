@@ -396,6 +396,135 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * A quiz section builds a separate, GRADED mod_quiz with the banked questions,
+     * a grade-to-pass, pass-based automatic completion, and an untracked reading
+     * label (the quiz is the section's tracked activity) — D23.
+     *
+     * @return void
+     */
+    public function test_quiz_section_builds_graded_quiz(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        $job = $this->approved_job_with([
+            ['title' => 'Exam', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $quiz = $DB->get_record('quiz', ['course' => $job->courseid], '*', MUST_EXIST);
+        $this->assertEquals(2, $DB->count_records('quiz_slots', ['quizid' => $quiz->id]), 'Banked questions not on the quiz.');
+        $this->assertGreaterThan(0, (float) $quiz->sumgrades, 'Quiz sumgrades was not recomputed.');
+
+        $cm = get_coursemodule_from_instance('quiz', $quiz->id);
+        $this->assertEquals(COMPLETION_TRACKING_AUTOMATIC, (int) $cm->completion);
+        $this->assertEquals(1, (int) $cm->completionpassgrade);
+        // Use-grade-for-completion is stored as a non-null grade-item number.
+        $this->assertNotNull($cm->completiongradeitemnumber);
+        $this->assertEquals(0, (int) $cm->completiongradeitemnumber);
+        $this->assertEquals(1, (int) $cm->visibleoncoursepage); // A graded quiz is a visible click-through.
+
+        // The grade item carries the pass grade that completion gates on.
+        $item = \grade_item::fetch([
+            'itemtype' => 'mod', 'itemmodule' => 'quiz', 'iteminstance' => $quiz->id,
+            'courseid' => $job->courseid, 'itemnumber' => 0,
+        ]);
+        $this->assertEqualsWithDelta(50.0, (float) $item->gradepass, 0.001);
+
+        // The reading label is untracked; the quiz is the section's signal.
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->label_completion($job->courseid));
+    }
+
+    /**
+     * A quiz whose questions can't be generated is skipped, and the reading label
+     * reverts to manual completion so the section is never uncompletable (D23/D14).
+     *
+     * @return void
+     */
+    public function test_quiz_failure_skips_and_label_manual(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        $job = $this->approved_job_with([
+            ['title' => 'Exam', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(false)))
+            ->materialize($job));
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $this->assertEquals(0, $DB->count_records('quiz', ['course' => $job->courseid]));
+        $this->assertEquals(COMPLETION_TRACKING_MANUAL, $this->label_completion($job->courseid));
+    }
+
+    /**
+     * The function test: PASSING the quiz completes the course; a graded-but-FAILED
+     * attempt does not (the summative gate, D23). Driven through the grade item the
+     * quiz's completion reads, so it exercises the real gradepass/completionpassgrade
+     * wiring and P15's course criteria.
+     *
+     * @return void
+     */
+    public function test_quiz_pass_completes_course_fail_does_not(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/completion/completion_completion.php');
+        require_once($CFG->libdir . '/gradelib.php');
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        $job = $this->approved_job_with([
+            ['title' => 'Exam', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $course = $DB->get_record('course', ['id' => $job->courseid], '*', MUST_EXIST);
+        $quiz = $DB->get_record('quiz', ['course' => $course->id], '*', MUST_EXIST);
+        $cm = get_fast_modinfo($course)->get_cm((int) get_coursemodule_from_instance('quiz', $quiz->id)->id);
+        $item = \grade_item::fetch([
+            'itemtype' => 'mod', 'itemmodule' => 'quiz', 'iteminstance' => $quiz->id,
+            'courseid' => $course->id, 'itemnumber' => 0,
+        ]);
+        $completion = new \completion_info($course);
+
+        // Passer: grade above the 50 pass mark -> COMPLETE_PASS -> course completes.
+        $passer = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $item->update_final_grade($passer->id, 80.0);
+        $completion->update_state($cm, COMPLETION_UNKNOWN, $passer->id);
+        $this->assertEquals(
+            COMPLETION_COMPLETE_PASS,
+            (int) $completion->get_data($cm, false, $passer->id)->completionstate
+        );
+
+        // Failer: graded below the pass mark -> COMPLETE_FAIL (done, but failed).
+        $failer = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $item->update_final_grade($failer->id, 20.0);
+        $completion->update_state($cm, COMPLETION_UNKNOWN, $failer->id);
+        $this->assertEquals(
+            COMPLETION_COMPLETE_FAIL,
+            (int) $completion->get_data($cm, false, $failer->id)->completionstate
+        );
+
+        // Aggregate course completion.
+        ob_start();
+        (new \core\task\completion_regular_task())->execute();
+        ob_end_clean();
+
+        $this->assertTrue(
+            (new \completion_completion(['course' => $course->id, 'userid' => $passer->id]))->is_complete(),
+            'Passing the quiz did not complete the course.'
+        );
+        $this->assertFalse(
+            (new \completion_completion(['course' => $course->id, 'userid' => $failer->id]))->is_complete(),
+            'A failed quiz attempt wrongly completed the course.'
+        );
+    }
+
+    /**
      * The label's completion tracking for a single-section course's reading label.
      *
      * @param int $courseid The course id.

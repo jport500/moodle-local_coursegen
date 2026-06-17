@@ -59,6 +59,12 @@ class materializer {
     /** @var int Default question count when an assessed section sets none. */
     private const DEFAULT_QUESTION_COUNT = 5;
 
+    /** @var int Maximum grade for a generated graded quiz (D23). */
+    private const QUIZ_MAX_GRADE = 100;
+
+    /** @var int Grade-to-pass for a generated graded quiz; completion gates on it (D23). */
+    private const QUIZ_PASS_GRADE = 50;
+
     /** @var \context|null The course's default question-bank context, cached per run. */
     private ?\context $coursebankcontext = null;
 
@@ -165,22 +171,29 @@ class materializer {
                 }
             }
 
-            // A knowledge check is built before the label so its filter token can
-            // be embedded in the label HTML. $token is null when no check was built
-            // (generation/banking skipped, D14), '' when built without an inline
-            // token (filter disabled), or the token when built and rendered inline.
-            $token = null;
-            if (($section['assessment']['type'] ?? '') === blueprint::ASSESS_KNOWLEDGECHECK) {
+            // Build the section's assessment, if any. $assessmentbuilt tracks whether
+            // an activity actually got created (vs a gen/banking skip, D14), so the
+            // reading label can carry completion only when nothing else does.
+            // A knowledge check is built before the label so its filter token can be
+            // embedded in the label HTML; $token is null when no check was built, ''
+            // when built without an inline token (filter disabled), else the token.
+            $assesstype = $section['assessment']['type'] ?? '';
+            $assessmentbuilt = false;
+            if ($assesstype === blueprint::ASSESS_KNOWLEDGECHECK) {
                 $token = $this->build_knowledgecheck($job, $course, $coursecontext, $sectionnum, $html, $section);
+                $assessmentbuilt = ($token !== null);
                 if ($token !== null && $token !== '') {
                     $html .= "\n" . \html_writer::tag('p', $token);
                 }
+            } else if ($assesstype === blueprint::ASSESS_QUIZ) {
+                // A graded quiz is a separate, visible click-through activity (D23).
+                $assessmentbuilt = $this->build_quiz($job, $course, $coursecontext, $sectionnum, $html, $section);
             }
 
-            // Exactly one completion-tracked activity per section (D21): when a check
-            // was built it is the signal (label untracked); otherwise the reading
-            // label carries the manual signal so the section stays completable.
-            $labelcompletion = ($token !== null) ? COMPLETION_TRACKING_NONE : COMPLETION_TRACKING_MANUAL;
+            // Exactly one completion-tracked activity per section (D21/D23): when an
+            // assessment was built it is the signal (label untracked); otherwise the
+            // reading label carries the manual signal so the section stays completable.
+            $labelcompletion = $assessmentbuilt ? COMPLETION_TRACKING_NONE : COMPLETION_TRACKING_MANUAL;
             $this->create_label($course, $sectionnum, $html, $draftid, $labelcompletion);
         }
 
@@ -636,6 +649,198 @@ PROMPT;
             'completionpassgrade' => 0,
         ];
         return add_moduleinfo($moduleinfo, $course);
+    }
+
+    /**
+     * Build a graded, summative quiz for a section (D23): generate and bank
+     * questions via the same quizgenpro seam the knowledge check uses, create a
+     * separate visible mod_quiz, add the banked questions, and gate completion on
+     * passing. On any generation/banking failure the quiz is skipped and the
+     * section keeps its reading (D14). The quiz is a click-through activity — a
+     * graded exam has no inline render.
+     *
+     * @param \stdClass $job The job.
+     * @param \stdClass $course The course.
+     * @param \context $coursecontext The course context.
+     * @param int $sectionnum The section number.
+     * @param string $readinghtml The section reading HTML (question source content).
+     * @param array $section The section spec.
+     * @return bool True if a quiz was built; false if it was skipped.
+     */
+    private function build_quiz(
+        \stdClass $job,
+        \stdClass $course,
+        \context $coursecontext,
+        int $sectionnum,
+        string $readinghtml,
+        array $section
+    ): bool {
+        $count = ((int) ($section['assessment']['questioncount'] ?? 0)) ?: self::DEFAULT_QUESTION_COUNT;
+        $content = trim(html_to_text($readinghtml, 0));
+        if ($content === '') {
+            $content = $section['title'] . '. ' . $section['summary'];
+        }
+
+        $questions = $this->quizclient->generate_questions($content, $count, $coursecontext);
+        if ($questions === []) {
+            $this->log(
+                $job,
+                self::TIER_ASSESSMENT,
+                'quizgenpro',
+                null,
+                null,
+                null,
+                null,
+                null,
+                'quiz skipped (no questions): ' . $section['title'],
+                audit_log::FAILURE
+            );
+            return false;
+        }
+        $qrefs = $this->bank_questions($questions, $course);
+        if ($qrefs === []) {
+            $this->log(
+                $job,
+                self::TIER_ASSESSMENT,
+                'quizgenpro',
+                null,
+                null,
+                null,
+                null,
+                null,
+                'quiz skipped (banking failed): ' . $section['title'],
+                audit_log::FAILURE
+            );
+            return false;
+        }
+
+        $quiz = $this->create_quiz($course, $sectionnum, $section['title']);
+        $this->add_quiz_questions($quiz, $qrefs);
+        \mod_quiz\quiz_settings::create((int) $quiz->instance)->get_grade_calculator()->recompute_quiz_sumgrades();
+
+        $this->log(
+            $job,
+            self::TIER_ASSESSMENT,
+            'quizgenpro',
+            null,
+            null,
+            null,
+            null,
+            null,
+            "graded quiz: {$section['title']} (" . count($qrefs) . ' questions, pass '
+            . self::QUIZ_PASS_GRADE . '/' . self::QUIZ_MAX_GRADE . ')',
+            audit_log::SUCCESS
+        );
+        return true;
+    }
+
+    /**
+     * Create a graded mod_quiz with pass-based automatic completion (D23). The
+     * grade-to-pass is written onto the grade item by add_moduleinfo, so a passing
+     * attempt yields COMPLETION_COMPLETE_PASS (which completes the course) and a
+     * failing one COMPLETION_COMPLETE_FAIL (which does not).
+     *
+     * @param \stdClass $course The course.
+     * @param int $sectionnum The section number.
+     * @param string $title The section title.
+     * @return \stdClass The created module info (carries ->instance).
+     */
+    private function create_quiz(\stdClass $course, int $sectionnum, string $title): \stdClass {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/quiz/lib.php'); // QUIZ_GRADEHIGHEST, QUIZ_NAVMETHOD_FREE.
+        $moduleinfo = (object) array_merge([
+            'modulename' => 'quiz',
+            'module' => $DB->get_field('modules', 'id', ['name' => 'quiz'], MUST_EXIST),
+            'course' => $course->id,
+            'section' => $sectionnum,
+            'visible' => 1,
+            'visibleoncoursepage' => 1,
+            'cmidnumber' => '',
+            'name' => \core_text::substr(get_string('quizname', 'local_coursegen', $title), 0, 250),
+            'intro' => '',
+            'introformat' => FORMAT_HTML,
+            // Behaviour and access (the fragile bundle — explicit defaults, 5.2).
+            'preferredbehaviour' => 'deferredfeedback',
+            'quizpassword' => '',
+            'subnet' => '',
+            'browsersecurity' => '-',
+            'timeopen' => 0,
+            'timeclose' => 0,
+            'timelimit' => 0,
+            'overduehandling' => 'autosubmit',
+            'graceperiod' => 0,
+            // Attempts and grading: unlimited attempts (failing blocks completion,
+            // so a learner can retake to pass), highest grade (D23).
+            'attempts' => 0,
+            'attemptonlast' => 0,
+            'grademethod' => QUIZ_GRADEHIGHEST,
+            'grade' => self::QUIZ_MAX_GRADE,
+            'sumgrades' => 0,
+            'questionsperpage' => 1,
+            'navmethod' => QUIZ_NAVMETHOD_FREE,
+            'shuffleanswers' => 1,
+            'decimalpoints' => 2,
+            'questiondecimalpoints' => -1,
+            'showuserpicture' => 0,
+            'showblocks' => 0,
+            'delay1' => 0,
+            'delay2' => 0,
+            // Pass-based automatic completion (D23): gradepass drives the grade item.
+            'completion' => COMPLETION_TRACKING_AUTOMATIC,
+            'completionusegrade' => 1,
+            'completionpassgrade' => 1,
+            'completionview' => 0,
+            'completionexpected' => 0,
+            'completionattemptsexhausted' => 0,
+            'completionminattempts' => 0,
+            'gradepass' => self::QUIZ_PASS_GRADE,
+            'completiongradeitemnumber' => 0,
+        ], self::quiz_review_options());
+        return add_moduleinfo($moduleinfo, $course);
+    }
+
+    /**
+     * The quiz review-options grid (8 options × 4 timings) that quiz_add_instance
+     * folds into the review bitmask columns. Mirrors the mod_form defaults: full
+     * review after the attempt and once closed, no during-attempt review.
+     *
+     * @return array<string, int>
+     */
+    private static function quiz_review_options(): array {
+        $options = ['attempt', 'correctness', 'maxmarks', 'marks', 'specificfeedback',
+            'generalfeedback', 'rightanswer', 'overallfeedback'];
+        $grid = [];
+        foreach ($options as $option) {
+            $grid[$option . 'during'] = ($option === 'attempt') ? 1 : 0;
+            $grid[$option . 'immediately'] = 1;
+            $grid[$option . 'open'] = 1;
+            $grid[$option . 'closed'] = 1;
+        }
+        return $grid;
+    }
+
+    /**
+     * Add banked questions to a quiz, resolving each (bank-entry id, version) to
+     * the question id the quiz API expects.
+     *
+     * @param \stdClass $quiz The created quiz module info (carries ->instance).
+     * @param array<int, array{0:int,1:int}> $qrefs The [qbeid, version] pairs.
+     * @return void
+     */
+    private function add_quiz_questions(\stdClass $quiz, array $qrefs): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+        $quizrecord = $DB->get_record('quiz', ['id' => $quiz->instance], '*', MUST_EXIST);
+        $quizrecord->cmid = $quiz->coursemodule;
+        foreach ($qrefs as [$qbeid, $version]) {
+            $questionid = $DB->get_field(
+                'question_versions',
+                'questionid',
+                ['questionbankentryid' => $qbeid, 'version' => $version],
+                MUST_EXIST
+            );
+            quiz_add_quiz_question((int) $questionid, $quizrecord);
+        }
     }
 
     /**

@@ -3,6 +3,30 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.13.0 — 2026-06-17 (Phase 17: real graded quiz)
+
+Adds a third assessment type — a real, graded, summative `mod_quiz` — distinct from
+the formative inline knowledge check. See DECISIONS D23 (completes D15).
+
+- **Graded quiz placement.** `ASSESS_QUIZ = 'quiz'` (reclaimed in P14) builds a
+  separate, visible `mod_quiz` click-through activity. Questions are generated and
+  banked through the same quizgenpro seam the knowledge check uses, added to the quiz
+  via `quiz_add_quiz_question` with `recompute_quiz_sumgrades`.
+- **Pass-to-complete.** Completion is `completionpassgrade` with a grade-to-pass of
+  50/100: passing → `COMPLETE_PASS` (counts toward course completion), a failed attempt
+  → `COMPLETE_FAIL` (does not). So a quiz section genuinely gates course completion —
+  and, if wrapped, the certificate — on *passing*. Defaults: unlimited attempts (so a
+  learner can retake to pass), highest grade, no time limit, review after attempt/close;
+  all tunable post-build.
+- **One-tracked-activity rule generalized (D21→D23).** If a KC *or* quiz was built the
+  reading label is untracked and the assessment is the section's completion signal; on a
+  gen/bank skip the label reverts to manual so the section is never uncompletable.
+  P15's course criteria pick up the quiz automatically.
+- **Human-selected.** The AI vocabulary stays `{none, knowledgecheck}` — it never emits
+  a quiz; "Graded quiz" is a deliberate choice in the review-blueprint dropdown.
+- Re-entrancy unchanged (quiz lives in the course; delete_course removes it on rebuild);
+  quiz-gen cost stays outside the spend cap (D13).
+
 ## v0.12.1 — 2026-06-17 (Phase 16: cert-wrap allocation source)
 
 Makes a wrapped certification actually certify. See DECISIONS D17 (amended).
