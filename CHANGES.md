@@ -3,6 +3,30 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.12.0 — 2026-06-17 (Phase 15: completion-to-certificate wiring)
+
+Wires and proves the back half of the value chain (course completion → muprog
+allocation → mucertify certificate). No new build targets (the real graded quiz is
+P16). See DECISIONS D22.
+
+- **Course-completion criteria configured (the missing link).** Generated courses had
+  `enablecompletion=1` but **no** completion criteria, so `course_completions` could
+  never fire and nothing downstream could trigger. The materializer now configures one
+  `completion_criteria_activity` per tracked module with `COMPLETION_AGGREGATION_ALL`
+  (overall + activity), via a shared `materializer::configure_course_completion()` run
+  after the build and before the cert wrap. P14's one-tracked-activity-per-section means
+  this is exactly "complete every section". A clean re-materialize rebuilds the criteria
+  fresh (the old course and its criteria are deleted), so no criterion points at a stale
+  cmid.
+- **Chain confirmed, no new code for links #3/#4.** Once course completion fires it emits
+  `\core\event\course_completed`; muprog's existing observer marks the program allocation
+  complete and fires `allocation_completed`, which mucertify's observer turns into an
+  issued certificate. Verified by reading the observers and proven by the runtime
+  walkthrough.
+- **P6 walkthrough reconciled.** `test_submit_drives_course_completion` now configures
+  completion via the same production method (`configure_course_completion`) instead of
+  criteria it set up itself, so it asserts against real wiring.
+
 ## v0.11.0 — 2026-06-17 (Phase 14: assessment-model coherence)
 
 Two corrections, no new build targets (a real graded quiz is P15). See DECISIONS D21.

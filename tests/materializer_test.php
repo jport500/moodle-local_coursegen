@@ -312,6 +312,90 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * The built course requires every tracked activity (one criterion per section),
+     * aggregated ALL — so course completion can fire and feed the cert chain (D22).
+     *
+     * @return void
+     */
+    public function test_course_completion_criteria_configured(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+        $job = $this->approved_job_with([
+            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2]],
+            ['title' => 'Reading only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        // One activity criterion per tracked CM (the KC and the reading label), and
+        // every criterion points at a real completion-tracked module in the course.
+        $criteria = $DB->get_records('course_completion_criteria', ['course' => $job->courseid]);
+        $this->assertCount(2, $criteria);
+        foreach ($criteria as $c) {
+            $this->assertTrue($DB->record_exists_select(
+                'course_modules',
+                'id = :id AND course = :course AND completion <> :none',
+                ['id' => $c->moduleinstance, 'course' => $job->courseid, 'none' => COMPLETION_TRACKING_NONE]
+            ));
+        }
+        // Overall aggregation is ALL: every tracked activity must be completed.
+        $this->assertEquals(COMPLETION_AGGREGATION_ALL, (int) $DB->get_field(
+            'course_completion_aggr_methd',
+            'method',
+            ['course' => $job->courseid, 'criteriatype' => null]
+        ));
+    }
+
+    /**
+     * The configured criteria actually DRIVE course completion: completing every
+     * tracked activity sets course_completions.timecompleted (D22).
+     *
+     * @return void
+     */
+    public function test_criteria_drive_course_completion(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/completion/completion_completion.php');
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        $job = $this->approved_job_with([
+            ['title' => 'Reading only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $course = $DB->get_record('course', ['id' => $job->courseid], '*', MUST_EXIST);
+        $learner = $this->getDataGenerator()->create_and_enrol($course, 'student');
+
+        // Complete the one tracked activity (the manual reading label).
+        $cmid = (int) $DB->get_field_sql(
+            "SELECT cm.id FROM {course_modules} cm
+               JOIN {modules} m ON m.id = cm.module AND m.name = 'label'
+              WHERE cm.course = :course AND cm.completion <> :none",
+            ['course' => $course->id, 'none' => COMPLETION_TRACKING_NONE]
+        );
+        $cm = get_fast_modinfo($course)->get_cm($cmid);
+        (new \completion_info($course))->update_state($cm, COMPLETION_COMPLETE, $learner->id);
+
+        // Course completion is aggregated by the scheduled task.
+        ob_start();
+        (new \core\task\completion_regular_task())->execute();
+        ob_end_clean();
+
+        $ccompletion = new \completion_completion(['course' => $course->id, 'userid' => $learner->id]);
+        $this->assertTrue(
+            $ccompletion->is_complete(),
+            'Configured criteria did not drive course_completions.'
+        );
+    }
+
+    /**
      * The label's completion tracking for a single-section course's reading label.
      *
      * @param int $courseid The course id.

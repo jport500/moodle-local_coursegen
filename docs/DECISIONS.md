@@ -667,3 +667,42 @@ activities); wiring course-completion criteria here (separate concern, added sco
 
 **Revisit if.** P15 lands the real graded quiz (reintroduces `ASSESS_QUIZ='quiz'` as a
 distinct, human-chosen, graded vehicle alongside the knowledge check).
+
+---
+
+## D22 — Generated courses configure course-completion criteria (all tracked activities, ALL); the completion→cert chain (P15)
+
+**Decision.** The materializer now configures course-completion criteria on every
+generated course: one `completion_criteria_activity` per completion-tracked module,
+with overall and activity `completion_aggregation` set to `COMPLETION_AGGREGATION_ALL`
+(mirrors core's `course/completion.php`). Since P14 (D21) leaves exactly one tracked
+activity per section, "complete all tracked activities" equals "completed every
+section". It runs at the end of the build (after all activities exist, so their cmids
+are known), before the cert wrap, on the same guarded path; a clean re-materialize
+deletes the prior course and its criteria and rebuilds them fresh, so no criterion ever
+points at a stale cmid. The configurator is a shared static method
+(`materializer::configure_course_completion`) the completion walkthrough test also calls,
+so the test asserts against real production wiring.
+
+**Why.** This was the one missing link in the value chain. The front half (build →
+learner completes activities → format_pathway progress) worked, but the generated course
+had **no** completion criteria, so `course_completions` could never fire — and everything
+downstream keys off it. With criteria configured, completing the activities drives course
+completion, which emits `\core\event\course_completed`; the existing P7 wrap propagates
+the rest with no new code: muprog's observer (`event_observer::course_completed` →
+`allocation::fix_user_enrolments`) copies course completion into program-item completion
+and fires `\tool_muprog\event\allocation_completed`, and mucertify's observer
+(`event_observer::allocation_completed`) issues the certificate. Verified by reading the
+observers; proven end to end by the runtime walkthrough (allocate → enrol → complete →
+cron → course_completions fires, allocation completes, certificate issues).
+
+**Rejected.** Leaving criteria unconfigured and relying on operators to set them by hand
+(the back half would silently never work — the status quo this fixes); a single
+course-level or grade-based criterion (the per-activity ALL model maps cleanly onto the
+one-tracked-activity-per-section design and needs no grade setup); patching muprog/
+mucertify to watch something other than course completion (they already watch it
+correctly — the gap was purely the missing criteria).
+
+**Revisit if.** A course type wants partial/weighted completion (e.g. complete N of M
+sections) — switch the aggregation to ANY or a points model; or completion should also
+require a passing grade once the real graded quiz (P16) lands.

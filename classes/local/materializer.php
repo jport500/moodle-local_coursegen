@@ -184,11 +184,58 @@ class materializer {
             $this->create_label($course, $sectionnum, $html, $draftid, $labelcompletion);
         }
 
+        // Require completion of every tracked activity so course completion fires
+        // and propagates to the cert chain (D22). Runs after all activities exist.
+        self::configure_course_completion((int) $course->id);
+
         // Optional, best-effort cert-chain wrap (D17) — never fails the job.
         (new cert_wrap())->wrap($job, $course, $context);
 
         $this->set_status($job, job_manager::STATUS_COMPLETE);
         return true;
+    }
+
+    /**
+     * Configure course-completion criteria on a generated course: require every
+     * completion-tracked activity, aggregated with ALL (D22). P14 leaves exactly
+     * one tracked activity per section, so this is "completed every section".
+     *
+     * Mirrors core's course/completion.php. Shared with the completion walkthrough
+     * test so it asserts against the real production wiring. A clean re-materialize
+     * deletes the prior course (and its criteria) and rebuilds these fresh, so no
+     * criterion ever points at a stale cmid.
+     *
+     * @param int $courseid The generated course id.
+     * @return void
+     */
+    public static function configure_course_completion(int $courseid): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/completion/criteria/completion_criteria_activity.php');
+        require_once($CFG->dirroot . '/completion/completion_aggregation.php');
+
+        $cmids = $DB->get_fieldset_select(
+            'course_modules',
+            'id',
+            'course = :course AND completion <> :none AND deletioninprogress = 0',
+            ['course' => $courseid, 'none' => COMPLETION_TRACKING_NONE]
+        );
+        if (!$cmids) {
+            return; // No tracked activities to require (degenerate; should not occur).
+        }
+
+        // Overall and activity aggregation = ALL (every tracked activity required).
+        foreach ([null, COMPLETION_CRITERIA_TYPE_ACTIVITY] as $criteriatype) {
+            $aggregation = new \completion_aggregation(['course' => $courseid, 'criteriatype' => $criteriatype]);
+            $aggregation->setMethod(COMPLETION_AGGREGATION_ALL);
+            $aggregation->save();
+        }
+
+        $criterion = new \completion_criteria_activity();
+        $data = (object) [
+            'id' => $courseid,
+            'criteria_activity' => array_fill_keys(array_map('intval', $cmids), 1),
+        ];
+        $criterion->update_config($data);
     }
 
     /**

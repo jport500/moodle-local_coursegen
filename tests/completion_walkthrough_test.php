@@ -84,15 +84,13 @@ final class completion_walkthrough_test extends \advanced_testcase {
     public function test_submit_drives_course_completion(): void {
         global $CFG;
         require_once($CFG->libdir . '/completionlib.php');
-        require_once($CFG->dirroot . '/completion/criteria/completion_criteria_activity.php');
         require_once($CFG->dirroot . '/completion/completion_completion.php');
         $this->resetAfterTest();
         [$course, $learner, $cm, $kcid, $answerid] = $this->scenario();
 
-        // Require the knowledge check for course completion.
-        $criteriadata = (object) ['id' => $course->id, 'criteria_activity' => [$cm->id => 1]];
-        $criterion = new \completion_criteria_activity();
-        $criterion->update_config($criteriadata);
+        // Configure completion via the SAME path production uses (D22), so this
+        // asserts against the real wiring rather than criteria set up in-test.
+        \local_coursegen\local\materializer::configure_course_completion((int) $course->id);
 
         $this->setUser($learner);
         \mod_knowledgecheck\api::submit_attempt($kcid, [1 => (string) $answerid]);
