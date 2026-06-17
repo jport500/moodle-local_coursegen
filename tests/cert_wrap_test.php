@@ -316,6 +316,129 @@ final class cert_wrap_test extends \advanced_testcase {
     }
 
     /**
+     * The SEAM (where P7 missed): once wrapped, assigning a learner to the
+     * certification actually allocates them to the program and enrols them in the
+     * course — proving the mucertify allocation source is wired, not just present.
+     *
+     * @return void
+     */
+    public function test_assignment_allocates_and_enrols_learner(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [$job, $course, $context] = $this->scenario();
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 1, 'local_coursegen');
+
+        (new cert_wrap())->wrap($job, $course, $context);
+        $idnumber = cert_wrap::IDNUMBER_PREFIX . $job->id;
+        $program = $DB->get_record('tool_muprog_program', ['idnumber' => $idnumber], '*', MUST_EXIST);
+        $cert = $DB->get_record('tool_mucertify_certification', ['idnumber' => $idnumber], '*', MUST_EXIST);
+
+        // The program now carries the mucertify allocation source.
+        $this->assertTrue($DB->record_exists(
+            'tool_muprog_source',
+            ['programid' => $program->id, 'type' => 'mucertify']
+        ));
+
+        // Assign a learner via a manual assignment source on the certification.
+        $source = \tool_mucertify\local\source\manual::update_source((object) [
+            'certificationid' => $cert->id, 'type' => 'manual', 'enable' => 1,
+        ]);
+        $learner = $this->getDataGenerator()->create_user();
+        \tool_mucertify\local\source\manual::assign_users($cert->id, (int) $source->id, [$learner->id]);
+
+        // The assignment must flow through to a program allocation AND a course enrolment.
+        $this->assertTrue(
+            $DB->record_exists(
+                'tool_muprog_allocation',
+                ['programid' => $program->id, 'userid' => $learner->id]
+            ),
+            'Assigning the learner to the certification did not allocate them to the program.'
+        );
+        $this->assertTrue(
+            is_enrolled(\context_course::instance($course->id), $learner),
+            'Allocated learner was not enrolled in the wrapped course.'
+        );
+    }
+
+    /**
+     * Re-wrapping does not duplicate the mucertify allocation source.
+     *
+     * @return void
+     */
+    public function test_allocation_source_idempotent_on_rewrap(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [$job, $course, $context] = $this->scenario();
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 1, 'local_coursegen');
+
+        $wrap = new cert_wrap();
+        $wrap->wrap($job, $course, $context);
+        $wrap->wrap($job, $course, $context);
+
+        $program = $DB->get_record(
+            'tool_muprog_program',
+            ['idnumber' => cert_wrap::IDNUMBER_PREFIX . $job->id],
+            '*',
+            MUST_EXIST
+        );
+        $this->assertEquals(1, $DB->count_records(
+            'tool_muprog_source',
+            ['programid' => $program->id, 'type' => 'mucertify']
+        ));
+    }
+
+    /**
+     * Atomic cert chain: if the allocation source can't be enabled, the
+     * certification is rolled back (never inert), the failure is audited, and the
+     * program is left intact.
+     *
+     * @return void
+     */
+    public function test_certification_rolled_back_when_source_fails(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [$job, $course, $context] = $this->scenario();
+        set_config('wrap_muprog', 1, 'local_coursegen');
+        set_config('wrap_mucertify', 1, 'local_coursegen');
+
+        $wrap = new class extends cert_wrap {
+            /**
+             * Force the allocation-source enabling to fail.
+             *
+             * @param int $programid The program id.
+             * @return void
+             */
+            protected function enable_certification_allocation_source(int $programid): void {
+                throw new \moodle_exception('error');
+            }
+        };
+
+        ob_start(); // The rollback warning emits an mtrace line.
+        $wrap->wrap($job, $course, $context);
+        ob_end_clean();
+
+        $idnumber = cert_wrap::IDNUMBER_PREFIX . $job->id;
+        $this->assertFalse(
+            $DB->record_exists('tool_mucertify_certification', ['idnumber' => $idnumber]),
+            'An inert certification was left after the source failed.'
+        );
+        $this->assertTrue(
+            $DB->record_exists('tool_muprog_program', ['idnumber' => $idnumber]),
+            'The program should be kept when only the certification rolls back.'
+        );
+        $this->assertTrue(
+            $DB->record_exists_select(
+                'coursegen_log',
+                'jobid = :jobid AND stage = :stage AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
+                ['jobid' => $job->id, 'stage' => 'wrap', 'outcome' => 'failure', 'detail' => '%rolled back%']
+            ),
+            'The rolled-back certification was not audited as a failure.'
+        );
+    }
+
+    /**
      * Build a job + a hidden course in a category, plus that category's context.
      *
      * @return array [job, course, context]

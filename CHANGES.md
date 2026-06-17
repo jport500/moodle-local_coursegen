@@ -3,6 +3,29 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.12.1 — 2026-06-17 (Phase 16: cert-wrap allocation source)
+
+Makes a wrapped certification actually certify. See DECISIONS D17 (amended).
+
+- **The wrap was inert.** cert_wrap created the program and certification (linked by
+  `programid1`) but never enabled the muprog `mucertify` allocation source on the
+  program. `sync_certifications` only allocates members through that source, so a
+  learner assigned to a wrapped certification got an assignment + period but **no
+  program allocation and no course enrolment** — "pending" forever, while looking
+  correct. (Exposed by the P15 runtime walkthrough.)
+- **Fix.** After creating the certification, the wrap now enables the source via
+  `\tool_muprog\local\source\mucertify::update_source` (idempotent — re-wrap doesn't
+  duplicate; `program::delete` already cascades it on rebuild). Once the source
+  exists, the normal assign → sync → allocate → enrol path runs with no further
+  intervention.
+- **Atomic cert chain.** An inert certification is worse than none, so if the source
+  can't be enabled the certification is rolled back (deleted) and the failure audited
+  loudly; the program is kept (independently allocatable). The wrap stays best-effort
+  for the job.
+- **Tested at the seam** (where P7 missed): a wrapped build + assigning a learner is
+  asserted to produce a real program allocation AND course enrolment — not merely the
+  source row — plus idempotency and the atomic rollback.
+
 ## v0.12.0 — 2026-06-17 (Phase 15: completion-to-certificate wiring)
 
 Wires and proves the back half of the value chain (course completion → muprog

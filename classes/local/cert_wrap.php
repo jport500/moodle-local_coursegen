@@ -90,9 +90,50 @@ class cert_wrap {
 
         try {
             $certification = $this->ensure_certification($job, $course, $context, (int) $program->id);
+            // A certification with no allocation source is inert — it looks like it
+            // works but can never allocate anyone, so it can never certify (D17). The
+            // cert chain is therefore atomic: enable the source or roll the
+            // certification back. The program is left intact (it is independently
+            // allocatable, not inert).
+            $this->enable_certification_allocation_source((int) $program->id);
             $this->audit($job, "wrapped program {$program->id} in certification {$certification->id}", audit_log::SUCCESS);
         } catch (\Throwable $e) {
-            $this->warn($job, 'certification wrap failed: ' . $e->getMessage());
+            $this->rollback_certification($job);
+            $this->warn($job, 'certification wrap failed; certification rolled back: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Enable the muprog 'mucertify' allocation source on the program so members
+     * assigned to the certification are allocated to the program (and enrolled in
+     * its course). Idempotent: update_source finds the source by (type, programid)
+     * and updates or inserts, so a re-wrap never duplicates it.
+     *
+     * @param int $programid The program backing the certification.
+     * @return void
+     */
+    protected function enable_certification_allocation_source(int $programid): void {
+        \tool_muprog\local\source\mucertify::update_source((object) [
+            'programid' => $programid,
+            'type' => 'mucertify',
+            'enable' => 1,
+        ]);
+    }
+
+    /**
+     * Delete the job's certification (atomic-chain rollback). The program is kept.
+     *
+     * @param \stdClass $job The coursegen job.
+     * @return void
+     */
+    private function rollback_certification(\stdClass $job): void {
+        global $DB;
+        if (!self::certification_available()) {
+            return;
+        }
+        $cert = $DB->get_record('tool_mucertify_certification', ['idnumber' => self::IDNUMBER_PREFIX . $job->id]);
+        if ($cert) {
+            \tool_mucertify\local\certification::delete((int) $cert->id);
         }
     }
 

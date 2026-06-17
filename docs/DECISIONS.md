@@ -468,10 +468,26 @@ error (loses a built course over an optional step); auto-enabling the program wh
 only the certification toggle is set (creates a program the admin didn't request);
 shipping the arbitrary 1000000 cap default.
 
-**Revisit if.** The wrap should also allocate learners (add an allocation source at
-wrap time); or recertification is wanted (set `programid2`/`recertify` on the
+**Revisit if.** Recertification is wanted (set `programid2`/`recertify` on the
 certification); or the wrap should move out of materialize into an explicit,
 separately-triggered finalize action.
+
+**Allocation source amended (P16).** As first built, the wrap created the program and
+the certification (linked by `programid1`) but never enabled the muprog `mucertify`
+allocation **source** on the program. `sync_certifications` only allocates members
+through that source, so a learner assigned to a wrapped certification got an assignment
+and a period but **no program allocation and no course enrolment** — the certification
+was structurally inert ("pending" forever) while looking correct. The wrap now enables
+the source (`\tool_muprog\local\source\mucertify::update_source`, idempotent) on the
+program immediately after the certification is created. Because an inert certification
+is worse than none, the cert chain is **atomic**: if the source cannot be enabled the
+certification is rolled back (deleted) and the failure audited loudly — never ship a
+certification that can't certify. The program is kept (it is independently allocatable,
+not inert), and the wrap stays best-effort for the job overall. The earlier "configure
+the program's allocation sources afterwards" note referred to *who* gets allocated
+(cohort/manual/self) — not this cert→program plumbing, which is mandatory for the
+certification to function. Tested at the seam (assign → allocate → enrol), not just the
+source row's existence.
 
 ---
 
