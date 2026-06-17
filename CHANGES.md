@@ -3,6 +3,31 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.9.1 — 2026-06-16 (Phase 10: guard the course's own learner state)
+
+Extends the D18 re-materialize guard to protect the course itself, not only the
+cert-chain wrap — the gap P9's reopen-from-COMPLETE made reachable.
+
+- **Symmetric refusal (DECISIONS D20).** A re-materialize is delete_course +
+  rebuild, which destroys the course's enrolments, completion and grades. D18
+  refused only on wrap allocations/assignments, so a learner enrolled by any
+  other route (manual/self/cohort, once an admin unhid the course) was invisible
+  and could be silently deleted by a trivial edit + re-approve. `materialize()`
+  now also refuses when the job's course has live learner state.
+- **Course predicate** (`materializer::course_learner_state_reason`): fires on ≥1
+  user enrolled via a non-`muprog` instance, or any real completion
+  (`course_modules_completion.completionstate <> 0`, or `course_completions`
+  with `timecompleted` set). Muprog enrolments are excluded because they map 1:1
+  to program allocations already counted by the wrap check — no double-reporting,
+  no gap. Verified that a freshly-built course has a zero baseline (no enrolments,
+  no completion), so the authoring-retry loop is never false-refused.
+- **Composition.** Two predicates feed one refusal: `cert_wrap::populated_block_reason`
+  (now returns just its clause) and the course predicate, joined into one
+  combined, actionable reason. Still runs before any cleanup, so a refusal leaves
+  the course, program and certification intact and the job COMPLETE; the retry
+  path is P9's reopen-from-COMPLETE (clear the learner state, then edit +
+  re-approve to rebuild).
+
 ## v0.9.0 — 2026-06-16 (Phase 9: pre-pilot cleanup)
 
 Final cleanup before the pilot; no new features.

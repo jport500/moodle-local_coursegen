@@ -97,16 +97,18 @@ class cert_wrap {
     }
 
     /**
-     * Why a re-materialize must be refused, or null if cleanup is safe.
+     * The wrap's live-state clause for a refusal, or null if absent/empty.
      *
      * A wrap is disposable only while empty: this plugin's cleanup deletes the
      * program/certification by idnumber, and tool_muprog/tool_mucertify delete
      * hard-cascades learner allocations/assignments (and tears down enrolments).
      * So if an admin has populated the wrap, rebuilding would silently wipe their
-     * configuration and the cohort's access — refuse instead (D18).
+     * configuration and the cohort's access (D18). Returns just the "what would be
+     * lost" clause; the materializer frames and composes it with the course's own
+     * learner-state clause into one refusal (D20).
      *
      * @param \stdClass $job The coursegen job.
-     * @return string|null An actionable reason, or null if absent/empty (safe).
+     * @return string|null The clause, or null if the wrap is absent/empty (safe).
      */
     public function populated_block_reason(\stdClass $job): ?string {
         global $DB;
@@ -132,13 +134,7 @@ class cert_wrap {
             }
         }
 
-        if (!$reasons) {
-            return null;
-        }
-        return 'Re-materialize refused: rebuilding would delete a populated cert-chain wrap — '
-            . implode('; ', $reasons)
-            . '. Clear the allocations/assignments or detach the program/certification, then edit'
-            . ' and re-approve the job to rebuild. The existing course is left live and unchanged.';
+        return $reasons ? implode('; ', $reasons) : null;
     }
 
     /**

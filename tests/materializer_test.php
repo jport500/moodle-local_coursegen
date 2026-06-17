@@ -437,6 +437,146 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * Regression guard: a freshly built course with no learners rebuilds cleanly
+     * — the course-state guard must NOT fire on the zero baseline (D20).
+     *
+     * @return void
+     */
+    public function test_clean_rebuild_not_refused(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $firstcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // Nobody has touched the course, so a re-approve + rebuild must proceed.
+        $DB->set_field('coursegen_job', 'status', job_manager::STATUS_APPROVED, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+
+        $secondcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+        $this->assertNotEquals($firstcourse, $secondcourse);
+        $this->assertSame(
+            job_manager::STATUS_COMPLETE,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+    }
+
+    /**
+     * A learner enrolled directly (no wrap) blocks the rebuild; the course and the
+     * enrolment are intact and the refusal audited. Unenrolling then lets the
+     * rebuild proceed (D20).
+     *
+     * @return void
+     */
+    public function test_direct_enrolment_refuses_then_retry_after_unenrol(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $course = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // A learner is directly enrolled (e.g. after an admin unhid the course).
+        $learner = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->enrol_user($learner->id, $course);
+        $coursecontext = \context_course::instance($course);
+        $this->assertTrue(is_enrolled($coursecontext, $learner));
+
+        $DB->set_field('coursegen_job', 'status', job_manager::STATUS_APPROVED, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        ob_start();
+        $ok = (new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job);
+        ob_end_clean();
+
+        $this->assertFalse($ok, 'Re-materialize was not refused for a directly-enrolled learner.');
+        $this->assertSame(
+            job_manager::STATUS_COMPLETE,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+        $this->assertTrue($DB->record_exists('course', ['id' => $course]), 'The course was deleted.');
+        $this->assertTrue(is_enrolled($coursecontext, $learner), 'The learner was unenrolled.');
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
+            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%directly-enrolled learner%']
+        ));
+
+        // Retry after unenrolling: the rebuild now proceeds.
+        $instance = $DB->get_record_sql(
+            "SELECT e.* FROM {enrol} e WHERE e.courseid = :courseid AND e.enrol = :manual",
+            ['courseid' => $course, 'manual' => 'manual']
+        );
+        enrol_get_plugin('manual')->unenrol_user($instance, $learner->id);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        review_gate::reopen_for_reedit($job, 2);
+        review_gate::approve($job, 2);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $this->assertFalse($DB->record_exists('course', ['id' => $course]), 'The old course was not replaced.');
+        $this->assertSame(
+            job_manager::STATUS_COMPLETE,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+    }
+
+    /**
+     * A real activity-completion record (no enrolment, no wrap) blocks the rebuild
+     * — learner progress must not be silently destroyed (D20).
+     *
+     * @return void
+     */
+    public function test_completion_record_refuses_rematerialize(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Only', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $course = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // A learner completed an activity in the course.
+        $learner = $this->getDataGenerator()->create_user();
+        $cmid = (int) $DB->get_field_sql(
+            'SELECT MIN(id) FROM {course_modules} WHERE course = :course',
+            ['course' => $course]
+        );
+        $DB->insert_record('course_modules_completion', (object) [
+            'coursemoduleid' => $cmid,
+            'userid' => $learner->id,
+            'completionstate' => COMPLETION_COMPLETE,
+            'timemodified' => time(),
+        ]);
+
+        $DB->set_field('coursegen_job', 'status', job_manager::STATUS_APPROVED, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        ob_start();
+        $ok = (new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job);
+        ob_end_clean();
+
+        $this->assertFalse($ok, 'Re-materialize was not refused despite a completion record.');
+        $this->assertTrue($DB->record_exists('course', ['id' => $course]));
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            'jobid = :jobid AND outcome = :outcome AND ' . $DB->sql_like('detail', ':detail'),
+            ['jobid' => $job->id, 'outcome' => 'failure', 'detail' => '%completion record%']
+        ));
+    }
+
+    /**
      * Insert an approved job with the given section specs.
      *
      * @param array[] $sections Section specs in blueprint::from_array shape.

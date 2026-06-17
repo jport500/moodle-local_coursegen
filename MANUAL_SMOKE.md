@@ -106,6 +106,22 @@ This is the behaviour the automated `completion_walkthrough_test` exercises at
 the server layer; step 6 confirms the browser → webservice → completion path that
 the test can't drive.
 
+## 6b. Rebuild protection for a live course (no wrap needed)
+
+A re-materialize is delete-and-rebuild, so the guard refuses whenever it would
+destroy live learner state — including a learner who reached the course by direct
+enrolment, with no program/certification involved.
+
+1. Unhide a generated course and **directly enrol a learner** (Participants →
+   Enrol users), or have one complete an activity.
+2. Edit a section and **re-approve** the job to trigger a re-materialize.
+
+- [ ] It is **refused** — the job **stays COMPLETE**, the course and the learner's
+  enrolment/completion are untouched, and a `coursegen_log` row (outcome `failure`)
+  names the directly-enrolled learner / completion count.
+- [ ] **Retry after clearing:** unenrol the learner (and clear any completion),
+  then edit + re-approve again — the rebuild now proceeds.
+
 ## 7. Cert-chain wrap (optional — needs tool_muprog / tool_mucertify)
 
 In the plugin settings, turn on **Wrap in program** and **Wrap in certification**,

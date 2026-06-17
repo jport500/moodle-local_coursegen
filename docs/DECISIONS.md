@@ -554,3 +554,57 @@ floor later only if a real 5.1/PHP 8.2 test pass substantiates it.
 **Revisit if.** A 5.1/PHP 8.2 environment is stood up and the suite passes there (lower
 the floor back); or the pilot succeeds and the plugin goes GA (`v1.0.0`,
 `MATURITY_STABLE`).
+
+---
+
+## D20 — The re-materialize guard protects the course's own learner state, not just the wrap (P10)
+
+**Decision.** D18 refused a destructive rebuild only when the muprog program had
+allocations or the certification had assignments. But a re-materialize is
+`delete_course` + rebuild, which destroys the course's enrolments, completion and
+grades wholesale — and P9's reopen-from-COMPLETE made that reachable from a trivial
+edit. A learner who reached the (now-unhidden) course by any non-wrap route — manual,
+self, cohort enrolment — was invisible to the wrap-only guard. P10 makes the refusal
+symmetric: it now also refuses when the job's existing course holds live learner state,
+however it arose.
+
+- **Baseline (verified empirically).** A freshly-materialized course has **zero**
+  enrolled users, zero role assignments and zero completion records; `create_course`
+  does not auto-enrol the creator (`creatornewroleid` applies only in the web edit
+  flow, and the admin has manage caps). The default manual/guest/self instances — and,
+  once wrapped, a `muprog` instance — carry zero `user_enrolments`. So "populated" needs
+  no baseline subtraction: any enrolled learner or any real completion is genuine.
+- **Course predicate** (`materializer::course_learner_state_reason`): the job's course
+  is populated if it has ≥1 distinct user enrolled via a **non-`muprog`** instance, or
+  any real completion (`course_modules_completion.completionstate <> 0`, or
+  `course_completions.timecompleted` set).
+- **Why exclude `muprog` enrolments.** A muprog enrolment exists iff the user is
+  allocated to our program, which the wrap predicate already counts — so excluding them
+  reports the wrap case once (as "N allocations") instead of double-counting the same
+  people as "N enrolled learners". No gap: allocation ⟺ muprog enrolment ⟺ caught by the
+  wrap predicate. (Real completion is counted regardless of enrolment source, so a
+  learner who actually progressed is caught either way.)
+- **Composition.** Two predicates feeding one refusal: `cert_wrap::populated_block_reason`
+  (now returns just its clause) for the program/cert, and the course predicate in the
+  materializer; `materialize()` joins the non-null clauses into a single `refuse()` with
+  a combined, actionable reason. Still runs BEFORE `cleanup_partial_course`, so a refused
+  rebuild leaves the course, program and certification fully intact, and the job stays
+  COMPLETE (D18 as amended in P9). The retry path is P9's reopen-from-COMPLETE — clearing
+  the learner state, then editing + re-approving, rebuilds.
+
+**Why.** A guard that protects the wrap but not the course it wraps is asymmetric and
+unsafe: the worst loss (a learner's completion/grades) was exactly the unguarded case.
+Anchoring on the verified zero baseline lets the guard fire on genuine added learners
+without false-positiving the authoring-retry loop (build → edit → rebuild with nobody
+enrolled), which would otherwise be broken.
+
+**Rejected.** One combined check counting all enrolments incl. muprog with internal
+dedup (moves program/cert knowledge out of cert_wrap; needs explicit dedup); counting
+any completion-tracking row incl. `completionstate = 0` (a muprog enrolment can create a
+`course_completions` tracking row, overlapping the wrap clause); subtracting a non-zero
+baseline (there is none).
+
+**Revisit if.** A generated course is legitimately added to a second, foreign muprog
+program (its learners would be muprog-enrolled but outside our program, so caught only
+if they have real completion) — then widen the course predicate to count muprog
+enrolments not attributable to the job's own program.

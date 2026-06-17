@@ -109,12 +109,23 @@ class materializer {
             return false;
         }
 
-        // Refuse rather than destroy a populated cert-chain wrap on re-materialize
-        // (D18). This runs BEFORE any cleanup so a refusal leaves the existing
-        // course, program and certification fully intact.
-        $blocker = (new cert_wrap())->populated_block_reason($job);
-        if ($blocker !== null) {
-            $this->refuse($job, $blocker);
+        // Refuse rather than destroy live learner state on a re-materialize: the
+        // wrap's allocations/assignments (D18) AND the course's own enrolments and
+        // completion (D20). Runs BEFORE any cleanup, so a refusal leaves the
+        // existing course, program and certification fully intact.
+        $clauses = array_filter([
+            (new cert_wrap())->populated_block_reason($job),
+            $this->course_learner_state_reason($job),
+        ]);
+        if ($clauses) {
+            $this->refuse(
+                $job,
+                'Re-materialize refused: rebuilding would destroy live learner state — '
+                    . implode('; ', $clauses)
+                    . '. Unenrol or migrate the affected learners and clear any program allocations or'
+                    . ' certification assignments before editing and re-approving to rebuild.'
+                    . ' The existing course is left live and unchanged.'
+            );
             return false;
         }
 
@@ -679,6 +690,55 @@ PROMPT;
         $this->set_status($job, job_manager::STATUS_COMPLETE);
         $this->log($job, null, null, null, null, null, null, null, $reason, audit_log::FAILURE);
         mtrace("local_coursegen: materialize job {$job->id} refused: {$reason}");
+    }
+
+    /**
+     * The course's own live-learner-state clause for a refusal, or null if none
+     * (D20). A freshly-built course has zero enrolments and zero completion, so
+     * any of these is a genuine addition that delete_course would destroy:
+     *  - learners enrolled by a route OTHER than the program wrap (manual, self,
+     *    cohort, …); wrap enrolments are counted by cert_wrap instead, so they are
+     *    not double-reported here;
+     *  - real completion progress (a finished activity, or course completion).
+     *
+     * @param \stdClass $job The job.
+     * @return string|null The clause, or null if the course holds no learner state.
+     */
+    private function course_learner_state_reason(\stdClass $job): ?string {
+        global $DB;
+        if (empty($job->courseid) || !$DB->record_exists('course', ['id' => $job->courseid])) {
+            return null;
+        }
+        $parts = [];
+
+        $enrolled = (int) $DB->get_field_sql(
+            "SELECT COUNT(DISTINCT ue.userid)
+               FROM {user_enrolments} ue
+               JOIN {enrol} e ON e.id = ue.enrolid
+              WHERE e.courseid = :courseid AND e.enrol <> :muprog",
+            ['courseid' => $job->courseid, 'muprog' => 'muprog']
+        );
+        if ($enrolled > 0) {
+            $parts[] = "the course has {$enrolled} directly-enrolled learner(s)";
+        }
+
+        $progress = (int) $DB->get_field_sql(
+            "SELECT COUNT(cmc.id)
+               FROM {course_modules_completion} cmc
+               JOIN {course_modules} cm ON cm.id = cmc.coursemoduleid
+              WHERE cm.course = :courseid AND cmc.completionstate <> :incomplete",
+            ['courseid' => $job->courseid, 'incomplete' => COMPLETION_INCOMPLETE]
+        );
+        $progress += $DB->count_records_select(
+            'course_completions',
+            'course = :courseid AND timecompleted IS NOT NULL',
+            ['courseid' => $job->courseid]
+        );
+        if ($progress > 0) {
+            $parts[] = "{$progress} learner completion record(s)";
+        }
+
+        return $parts ? implode('; ', $parts) : null;
     }
 
     /**
