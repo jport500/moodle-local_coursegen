@@ -23,6 +23,7 @@
  */
 
 require(__DIR__ . '/../../config.php');
+require_once($CFG->libdir . '/filelib.php'); // Draft-area file APIs are not loaded by default.
 
 use local_coursegen\form\create_job_form;
 use local_coursegen\local\job_manager;

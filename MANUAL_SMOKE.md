@@ -27,8 +27,10 @@ round-trip.
 
 ## 1. Create a job and ingest source
 
-Either through the UI (`/local/coursegen/index.php` → upload a file or enter a
-topic) or via CLI:
+Through the UI — open a course **category**, then its settings (the category
+cog / "Category settings" menu) → **Create a generation job** (visible to users
+with `local/coursegen:generate` in that category) → upload a file or enter a
+topic. Or via CLI:
 
 ```
 php local/coursegen/cli/extract.php --file=/path/to/source.pdf --categoryid=<catid>

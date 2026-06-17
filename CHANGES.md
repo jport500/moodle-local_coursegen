@@ -3,6 +3,16 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.9.2 — 2026-06-16 (Phase 11: entry-point navigation)
+
+- **A real entry point.** Until now the generation page was reachable only by
+  typing its URL — nothing wired it into Moodle's UI. New `lib.php` adds
+  `local_coursegen_extend_navigation_category_settings()`, which puts a
+  "Create a generation job" link in a course category's settings navigation. The
+  link carries the category context id `index.php` requires and is shown only to
+  users who hold `local/coursegen:generate` there — so it never appears where it
+  would not work. No new capability, string, or schema.
+
 ## v0.9.1 — 2026-06-16 (Phase 10: guard the course's own learner state)
 
 Extends the D18 re-materialize guard to protect the course itself, not only the
