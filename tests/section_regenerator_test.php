@@ -224,7 +224,7 @@ final class section_regenerator_test extends \advanced_testcase {
             'contenttype' => 'page',
             'summary' => 'A summary',
             'image' => ['generate' => true, 'prompthint' => 'diagram'],
-            'assessment' => ['type' => 'quiz', 'questioncount' => 2],
+            'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2],
         ]);
     }
 }

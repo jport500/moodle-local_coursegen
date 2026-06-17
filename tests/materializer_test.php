@@ -176,13 +176,13 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
-     * With the filter enabled, a type=quiz section gets a STEALTH knowledge
+     * With the filter enabled, an assessed section gets a STEALTH knowledge
      * check with the banked questions pinned, automatic completion, and its
      * {knowledgecheck} token embedded in the section label.
      *
      * @return void
      */
-    public function test_quiz_section_gets_stealth_knowledgecheck(): void {
+    public function test_assessed_section_gets_stealth_knowledgecheck(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -190,7 +190,7 @@ final class materializer_test extends \advanced_testcase {
         filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
         $job = $this->approved_job_with([
             ['title' => 'Assessed', 'summary' => 's', 'objectives' => ['o'],
-             'assessment' => ['type' => 'quiz', 'questioncount' => 3]],
+             'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 3]],
         ]);
 
         $ok = (new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
@@ -218,6 +218,10 @@ final class materializer_test extends \advanced_testcase {
             'coursegen_log',
             ['jobid' => $job->id, 'tier' => 'assessment', 'outcome' => 'success']
         ));
+
+        // One tracked activity per section (D21): the check carries completion, so
+        // the reading label is untracked.
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->label_completion($job->courseid));
     }
 
     /**
@@ -233,7 +237,7 @@ final class materializer_test extends \advanced_testcase {
         set_config('enablecompletion', 1);
         filter_set_global_state('knowledgecheck', TEXTFILTER_DISABLED);
         $job = $this->approved_job_with([
-            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2]],
         ]);
 
         $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
@@ -249,6 +253,8 @@ final class materializer_test extends \advanced_testcase {
             ['c' => $job->courseid, 'tok' => '%{knowledgecheck%']
         ));
         $this->assertSame(job_manager::STATUS_COMPLETE, $job->status);
+        // The check was still built, so it (not the label) carries completion.
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->label_completion($job->courseid));
     }
 
     /**
@@ -271,6 +277,8 @@ final class materializer_test extends \advanced_testcase {
         $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
         $this->assertEquals(0, $DB->count_records('knowledgecheck', ['course' => $job->courseid]));
         $this->assertEquals(0, $quizclient->call_count());
+        // Reading-only section: the label is the one completion signal (D21).
+        $this->assertEquals(COMPLETION_TRACKING_MANUAL, $this->label_completion($job->courseid));
     }
 
     /**
@@ -278,13 +286,13 @@ final class materializer_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_quiz_failure_skips_and_builds(): void {
+    public function test_check_failure_skips_and_builds(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
         filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
         $job = $this->approved_job_with([
-            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2]],
         ]);
 
         // Quiz client returns no questions.
@@ -298,6 +306,26 @@ final class materializer_test extends \advanced_testcase {
             'coursegen_log',
             ['jobid' => $job->id, 'tier' => 'assessment', 'outcome' => 'failure']
         ));
+        // No check was built, so the reading label remains the section's one
+        // completion signal — the section is never left uncompletable (D21).
+        $this->assertEquals(COMPLETION_TRACKING_MANUAL, $this->label_completion($job->courseid));
+    }
+
+    /**
+     * The label's completion tracking for a single-section course's reading label.
+     *
+     * @param int $courseid The course id.
+     * @return int A COMPLETION_TRACKING_* value.
+     */
+    private function label_completion(int $courseid): int {
+        global $DB;
+        return (int) $DB->get_field_sql(
+            "SELECT cm.completion
+               FROM {course_modules} cm
+               JOIN {modules} m ON m.id = cm.module AND m.name = 'label'
+              WHERE cm.course = :courseid",
+            ['courseid' => $courseid]
+        );
     }
 
     /**

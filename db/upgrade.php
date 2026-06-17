@@ -54,5 +54,21 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026061607, 'local', 'coursegen');
     }
 
+    if ($oldversion < 2026061615) {
+        // P14 (D21): the assessment type 'quiz' was a misnomer — it always built a
+        // knowledge check. Rewrite stored blueprint JSON 'quiz' -> 'knowledgecheck'
+        // so no legacy 'quiz' remains (the normalizer now coerces any other value
+        // to 'none', and P15 reclaims 'quiz' for a real graded quiz).
+        $rs = $DB->get_recordset('coursegen_blueprint');
+        foreach ($rs as $record) {
+            $rewritten = \local_coursegen\local\blueprint::rewrite_legacy_assessment_json($record->content);
+            if ($rewritten !== null) {
+                $DB->set_field('coursegen_blueprint', 'content', $rewritten, ['id' => $record->id]);
+            }
+        }
+        $rs->close();
+        upgrade_plugin_savepoint(true, 2026061615, 'local', 'coursegen');
+    }
+
     return true;
 }

@@ -616,3 +616,54 @@ baseline (there is none).
 program (its learners would be muprog-enrolled but outside our program, so caught only
 if they have real completion) — then widen the course predicate to count muprog
 enrolments not attributable to the job's own program.
+
+---
+
+## D21 — Assessment-model coherence: one criterion per section, honest knowledge-check naming (P14)
+
+**Decision.** Two corrections to the assessment model, no new build targets (a real
+graded quiz is P15).
+
+- **One completion-tracked activity per section.** An assessed section previously
+  carried two tracked activities — the reading label (manual "Mark as done") and the
+  knowledge check (auto-on-submit) — so passing the checks left a learner short of 100%
+  until they also clicked every reading area. Now the label's completion rides the same
+  branch that decides whether a check was built: a section with a knowledge check sets
+  the label to `COMPLETION_TRACKING_NONE` (the check is the signal); a reading-only
+  section keeps the label at `COMPLETION_TRACKING_MANUAL` (its only signal). The signal
+  is keyed on whether a check was *actually built*, not on section type:
+  `build_knowledgecheck()` now returns `?string` (null = not built, so the label stays
+  the manual signal), guaranteeing exactly one tracked activity per section — never zero
+  (uncompletable) nor two. `format_pathway` progress counts tracked CMs (it skips
+  `COMPLETION_TRACKING_NONE`), so per-section progress now reads coherently. The
+  materializer still configures no course-completion *criteria* (it never did); that
+  `course_completions`/cert-chain question is separate and out of scope here.
+- **Honest knowledge-check naming.** The assessment type historically called `quiz`
+  always built a knowledge check (the P5 swap, D15). Renamed everywhere to
+  `knowledgecheck` (`ASSESS_QUIZ`→`ASSESS_KNOWLEDGECHECK`, value `'quiz'`→
+  `'knowledgecheck'`): blueprint enum/normalizer, edit dropdown + lang, `view.php` meta,
+  materializer dispatch, and the AI prompt vocabulary (now `{none, knowledgecheck}` — the
+  AI never emits a real quiz; that is a human-only choice in P15).
+
+**The data hazard.** Stored blueprints carried `"type":"quiz"` meaning knowledge check,
+and the normalizer coerces any non-`'knowledgecheck'` type to `none` after the rename —
+so unmigrated rows would silently lose their assessment on read. A one-time
+`db/upgrade.php` migration rewrites stored `coursegen_blueprint` JSON `'quiz'`→
+`'knowledgecheck'` (per-row decode → rewrite → encode), leaving **no** legacy `'quiz'`.
+
+**`'quiz'` reserved for P15.** Because the migration clears every legacy `'quiz'`, the
+value is free for P15 to reintroduce meaning a real `mod_quiz` — no ambiguity between an
+old knowledge check and a new graded quiz.
+
+**Why.** Two tracked activities per section made completion (and the cert chain that
+keys off it) misrepresent learner progress, and the "Quiz" label actively confused a
+real operator about what the tool builds. Migrating rather than aliasing keeps the enum
+honest and reclaims the natural word for the real thing.
+
+**Rejected.** A read-time `'quiz'`→knowledgecheck alias (makes `'quiz'` permanently mean
+KC, blocking P15's reuse); keying the label's completion on section type rather than
+whether a check was built (would leave a generation-skipped section with zero tracked
+activities); wiring course-completion criteria here (separate concern, added scope).
+
+**Revisit if.** P15 lands the real graded quiz (reintroduces `ASSESS_QUIZ='quiz'` as a
+distinct, human-chosen, graded vehicle alongside the knowledge check).

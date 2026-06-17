@@ -52,7 +52,7 @@ final class blueprint_edit_test extends \advanced_testcase {
             'sectionsummary' => ['sb', '', 'sa'],
             'sectionimage' => [1, 0, 0],
             'sectionimagehint' => ['hint', '', ''],
-            'sectionassesstype' => ['quiz', 'none', 'none'],
+            'sectionassesstype' => ['knowledgecheck', 'none', 'none'],
             'sectionassesscount' => [3, 0, 0],
         ];
 

@@ -26,10 +26,10 @@ defined('MOODLE_INTERNAL') || die();
 
 $string['action_approve'] = 'Approve';
 $string['approved_notice'] = 'Blueprint approved; the course is ready to be built.';
+$string['assess_knowledgecheck'] = 'Knowledge check';
 $string['assess_none'] = 'No assessment';
-$string['assess_quiz'] = 'Quiz';
 $string['blueprintimage'] = 'Image planned';
-$string['blueprintquiz'] = 'Quiz: {$a} questions';
+$string['blueprintknowledgecheck'] = 'Knowledge check: {$a} questions';
 $string['blueprintview'] = 'Generated blueprint';
 $string['coursegen:configure'] = 'Configure the AI course builder';
 $string['coursegen:generate'] = 'Generate courses with the AI course builder';

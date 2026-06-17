@@ -3,6 +3,31 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.11.0 — 2026-06-17 (Phase 14: assessment-model coherence)
+
+Two corrections, no new build targets (a real graded quiz is P15). See DECISIONS D21.
+
+- **One completion-tracked activity per section.** An assessed section carried two
+  tracked activities (the manual "Mark as done" reading label + the auto-on-submit
+  knowledge check), so learners who passed every check still sat short of 100% until
+  they also clicked each reading area. The reading label is now set to
+  `COMPLETION_TRACKING_NONE` when a knowledge check was built (the check is the
+  signal) and kept at `COMPLETION_TRACKING_MANUAL` only on reading-only sections. The
+  choice is keyed on whether a check was *actually* built (`build_knowledgecheck()`
+  now returns `?string`, null = not built), so a generation-skipped section keeps its
+  reading label as the one signal — every section has exactly one tracked activity,
+  never zero or two. `format_pathway` progress now reads coherently per section.
+- **Honest knowledge-check naming.** The assessment type called "quiz" always built a
+  knowledge check. Renamed everywhere to `knowledgecheck` (enum
+  `ASSESS_QUIZ`→`ASSESS_KNOWLEDGECHECK`, value `'quiz'`→`'knowledgecheck'`): blueprint
+  normalizer, edit dropdown + lang ("Knowledge check"), `view.php` meta, materializer
+  dispatch, and the AI prompt vocabulary (now `{none, knowledgecheck}` — the AI never
+  emits a real quiz).
+- **Migration.** A one-time `db/upgrade.php` step rewrites stored `coursegen_blueprint`
+  JSON `'quiz'`→`'knowledgecheck'` (mandatory: the normalizer would otherwise coerce
+  unmigrated `'quiz'` to `none` and drop the assessment). No legacy `'quiz'` remains,
+  reserving the value for P15's real quiz.
+
 ## v0.10.1 — 2026-06-17 (Phase 13: pre-pilot wayfinding polish)
 
 Two fixes on the P12 nav work; no new features (pipeline, guards, caps, wrap

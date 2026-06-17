@@ -329,7 +329,7 @@ final class blueprint_generator_test extends \advanced_testcase {
                     'contenttype' => 'page',
                     'summary' => 'Intro summary',
                     'image' => ['generate' => true, 'prompthint' => 'a diagram'],
-                    'assessment' => ['type' => 'quiz', 'questioncount' => 3],
+                    'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 3],
                 ],
                 [
                     'title' => 'Advanced',

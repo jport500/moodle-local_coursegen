@@ -166,15 +166,22 @@ class materializer {
             }
 
             // A knowledge check is built before the label so its filter token can
-            // be embedded in the label HTML.
-            if (($section['assessment']['type'] ?? '') === blueprint::ASSESS_QUIZ) {
+            // be embedded in the label HTML. $token is null when no check was built
+            // (generation/banking skipped, D14), '' when built without an inline
+            // token (filter disabled), or the token when built and rendered inline.
+            $token = null;
+            if (($section['assessment']['type'] ?? '') === blueprint::ASSESS_KNOWLEDGECHECK) {
                 $token = $this->build_knowledgecheck($job, $course, $coursecontext, $sectionnum, $html, $section);
-                if ($token !== '') {
+                if ($token !== null && $token !== '') {
                     $html .= "\n" . \html_writer::tag('p', $token);
                 }
             }
 
-            $this->create_label($course, $sectionnum, $html, $draftid);
+            // Exactly one completion-tracked activity per section (D21): when a check
+            // was built it is the signal (label untracked); otherwise the reading
+            // label carries the manual signal so the section stays completable.
+            $labelcompletion = ($token !== null) ? COMPLETION_TRACKING_NONE : COMPLETION_TRACKING_MANUAL;
+            $this->create_label($course, $sectionnum, $html, $draftid, $labelcompletion);
         }
 
         // Optional, best-effort cert-chain wrap (D17) — never fails the job.
@@ -221,15 +228,24 @@ class materializer {
     }
 
     /**
-     * Create the inline Text and media area (mod_label) with manual completion.
+     * Create the inline Text and media area (mod_label).
      *
      * @param \stdClass $course The course.
      * @param int $sectionnum The section number.
      * @param string $html The intro HTML (content + any embedded image).
      * @param int $draftitemid Draft area holding the embedded image, if any.
+     * @param int $completion COMPLETION_TRACKING_MANUAL when the label is the
+     *        section's completion signal, or COMPLETION_TRACKING_NONE when a
+     *        knowledge check carries it instead (D21).
      * @return void
      */
-    private function create_label(\stdClass $course, int $sectionnum, string $html, int $draftitemid): void {
+    private function create_label(
+        \stdClass $course,
+        int $sectionnum,
+        string $html,
+        int $draftitemid,
+        int $completion
+    ): void {
         global $DB;
         $moduleinfo = (object) [
             'modulename' => 'label',
@@ -239,9 +255,7 @@ class materializer {
             'visible' => 1,
             'visibleoncoursepage' => 1,
             'introeditor' => ['text' => $html, 'format' => FORMAT_HTML, 'itemid' => $draftitemid],
-            // Manual completion so the section counts toward format_pathway progress
-            // and the later muprog/mucertify completion chain (D12).
-            'completion' => COMPLETION_TRACKING_MANUAL,
+            'completion' => $completion,
             'completionview' => 0,
             'completionexpected' => 0,
             'completiongradeitemnumber' => null,
@@ -442,7 +456,10 @@ PROMPT;
      * @param int $sectionnum The section number.
      * @param string $readinghtml The section reading HTML (question source content).
      * @param array $section The section spec.
-     * @return string The {knowledgecheck ...} token to embed, or '' if none/fallback.
+     * @return string|null The {knowledgecheck ...} token to embed; '' when a check
+     *         was built without an inline token (filter disabled); null when no
+     *         check was built (generation/banking skipped) so the caller keeps the
+     *         reading label as the section's completion signal (D21).
      */
     private function build_knowledgecheck(
         \stdClass $job,
@@ -451,7 +468,7 @@ PROMPT;
         int $sectionnum,
         string $readinghtml,
         array $section
-    ): string {
+    ): ?string {
         global $DB;
         $count = ((int) ($section['assessment']['questioncount'] ?? 0)) ?: self::DEFAULT_QUESTION_COUNT;
         $content = trim(html_to_text($readinghtml, 0));
@@ -473,7 +490,7 @@ PROMPT;
                 'knowledge check skipped (no questions): ' . $section['title'],
                 audit_log::FAILURE
             );
-            return '';
+            return null;
         }
 
         $qrefs = $this->bank_questions($questions, $course);
@@ -490,7 +507,7 @@ PROMPT;
                 'knowledge check skipped (banking failed): ' . $section['title'],
                 audit_log::FAILURE
             );
-            return '';
+            return null;
         }
 
         $filteron = $this->filter_enabled($coursecontext);

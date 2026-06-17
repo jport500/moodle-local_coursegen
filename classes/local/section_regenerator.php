@@ -167,7 +167,7 @@ Respond with ONLY a JSON object (no prose, no code fences) of this shape:
   "objectives": ["learning objective", "..."],
   "summary": "what this section teaches",
   "image": {"generate": true or false, "prompthint": "diagram idea or empty"},
-  "assessment": {"type": "quiz" or "none", "questioncount": integer, "notes": "optional"}
+  "assessment": {"type": "knowledgecheck" or "none", "questioncount": integer, "notes": "optional"}
 }
 PROMPT;
     }

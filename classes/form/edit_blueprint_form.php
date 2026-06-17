@@ -68,7 +68,7 @@ class edit_blueprint_form extends \moodleform {
 
         $assesstypes = [
             blueprint::ASSESS_NONE => get_string('assess_none', 'local_coursegen'),
-            blueprint::ASSESS_QUIZ => get_string('assess_quiz', 'local_coursegen'),
+            blueprint::ASSESS_KNOWLEDGECHECK => get_string('assess_knowledgecheck', 'local_coursegen'),
         ];
 
         $repeat = [];

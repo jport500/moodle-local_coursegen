@@ -152,8 +152,8 @@ if ($blueprint) {
         if (!empty($section['image']['generate'])) {
             $meta[] = get_string('blueprintimage', 'local_coursegen');
         }
-        if ($section['assessment']['type'] === blueprint::ASSESS_QUIZ) {
-            $meta[] = get_string('blueprintquiz', 'local_coursegen', (int) $section['assessment']['questioncount']);
+        if ($section['assessment']['type'] === blueprint::ASSESS_KNOWLEDGECHECK) {
+            $meta[] = get_string('blueprintknowledgecheck', 'local_coursegen', (int) $section['assessment']['questioncount']);
         }
         if ($meta) {
             echo html_writer::tag('p', implode(' · ', $meta), ['class' => 'text-muted']);

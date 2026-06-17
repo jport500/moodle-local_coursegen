@@ -43,8 +43,9 @@ class blueprint {
      */
     public const CONTENT_INLINE = 'inline';
 
-    /** @var string Section assessed with a generated quiz. */
-    public const ASSESS_QUIZ = 'quiz';
+    /** @var string Section assessed with an inline knowledge check (D21). The value
+     * 'quiz' is reserved for a real graded quiz (P15). */
+    public const ASSESS_KNOWLEDGECHECK = 'knowledgecheck';
 
     /** @var string Section with no assessment. */
     public const ASSESS_NONE = 'none';
@@ -104,8 +105,8 @@ class blueprint {
 
         $image = (array) ($section['image'] ?? []);
         $assessment = (array) ($section['assessment'] ?? []);
-        $assesstype = ($assessment['type'] ?? self::ASSESS_NONE) === self::ASSESS_QUIZ
-            ? self::ASSESS_QUIZ : self::ASSESS_NONE;
+        $assesstype = ($assessment['type'] ?? self::ASSESS_NONE) === self::ASSESS_KNOWLEDGECHECK
+            ? self::ASSESS_KNOWLEDGECHECK : self::ASSESS_NONE;
 
         $this->sections[] = [
             'title' => trim((string) ($section['title'] ?? '')),
@@ -122,6 +123,29 @@ class blueprint {
                 'notes' => trim((string) ($assessment['notes'] ?? '')),
             ],
         ];
+    }
+
+    /**
+     * Rewrite a stored blueprint's legacy 'quiz' assessment type to
+     * 'knowledgecheck' (D21). Used by the one-time db/upgrade migration; pure so
+     * it is testable without the upgrade machinery.
+     *
+     * @param string $content The stored blueprint JSON.
+     * @return string|null The rewritten JSON if a 'quiz' type was found, else null.
+     */
+    public static function rewrite_legacy_assessment_json(string $content): ?string {
+        $decoded = json_decode($content, true);
+        if (!is_array($decoded) || empty($decoded['sections']) || !is_array($decoded['sections'])) {
+            return null;
+        }
+        $changed = false;
+        foreach ($decoded['sections'] as $i => $section) {
+            if (($section['assessment']['type'] ?? null) === 'quiz') {
+                $decoded['sections'][$i]['assessment']['type'] = self::ASSESS_KNOWLEDGECHECK;
+                $changed = true;
+            }
+        }
+        return $changed ? json_encode($decoded) : null;
     }
 
     /**

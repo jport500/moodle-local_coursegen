@@ -82,7 +82,7 @@ final class blueprint_test extends \advanced_testcase {
             'description' => 'D',
             'sections' => [
                 ['title' => 'S', 'objectives' => ['o1', 'o2'], 'contenttype' => 'book',
-                 'summary' => 'sum', 'assessment' => ['type' => 'quiz', 'questioncount' => 5]],
+                 'summary' => 'sum', 'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 5]],
             ],
         ]);
         $restored = blueprint::from_json($original->to_json());
