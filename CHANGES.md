@@ -3,6 +3,27 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.15.0 — 2026-06-17 (Phase 19: course-structure enrichment)
+
+Brackets the generated content with an intro and a wrap-up section and gives the
+course a generated cover image. All in the materializer; no blueprint/AI-prompt/
+review-form changes. See DECISIONS D25.
+
+- **Introduction bookend** — the first section in the flow, derived (no extra AI call)
+  from the course description + a "what you'll cover" list of the content section titles.
+- **Wrap-up bookend** — the last section, a short boilerplate closing note; gives the
+  last content section a `<Next>` target (so its completion display refreshes on
+  navigation) and a home for an operator-added certificate. The plugin builds the section
+  only — it does NOT create a mod_coursecertificate.
+- Both bookend labels are `COMPLETION_TRACKING_NONE` (a deliberate exception to P14): they
+  are orientation/closure, not learning units, so they are NOT course-completion criteria.
+  The criteria remain exactly the content/assessment tracked activities, and assessment
+  placement stays correct despite the front-shift (it keys on the real section number).
+- **Course thumbnail** — a decorative cover generated via the image_client and set as the
+  course image (`overviewfiles`). Respects the section image policy: gated by the image
+  opt-in (a flagged section) + the sub-cap, skipped (not failed) when off/exhausted, and
+  counted as one image. No alt text.
+
 ## v0.14.0 — 2026-06-17 (Phase 18: remove the cert/program wrap)
 
 Removes the certification/program wrapper — credentialing via muprog/mucertify is out

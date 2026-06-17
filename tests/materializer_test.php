@@ -71,9 +71,10 @@ final class materializer_test extends \advanced_testcase {
         $this->assertSame('pathway', $course->format);
         $this->assertEquals(1, $course->enablecompletion);
 
-        // One label per section; the flagged section embeds an image.
-        $this->assertEquals(2, $DB->count_records('label', ['course' => $course->id]));
-        $this->assertEquals(1, $image->call_count());
+        // A label per content section plus the intro and wrap-up bookends (D25).
+        $this->assertEquals(4, $DB->count_records('label', ['course' => $course->id]));
+        // One flagged section image plus the course thumbnail (D25).
+        $this->assertEquals(2, $image->call_count());
         $this->assertTrue($DB->record_exists_select(
             'label',
             'course = :c AND ' . $DB->sql_like('intro', ':img'),
@@ -335,6 +336,14 @@ final class materializer_test extends \advanced_testcase {
         // every criterion points at a real completion-tracked module in the course.
         $criteria = $DB->get_records('course_completion_criteria', ['course' => $job->courseid]);
         $this->assertCount(2, $criteria);
+        // The course has 4 labels (intro + 2 content + wrap-up) but only the 2
+        // content tracked activities are criteria — the bookends contribute nothing.
+        $this->assertEquals(4, $DB->count_records('label', ['course' => $job->courseid]));
+        $this->assertEquals(2, $DB->count_records_select(
+            'course_modules',
+            'course = :course AND completion <> :none AND deletioninprogress = 0',
+            ['course' => $job->courseid, 'none' => COMPLETION_TRACKING_NONE]
+        ));
         foreach ($criteria as $c) {
             $this->assertTrue($DB->record_exists_select(
                 'course_modules',
@@ -524,7 +533,191 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
-     * The label's completion tracking for a single-section course's reading label.
+     * The build is bracketed by an untracked intro (first in the flow, with the
+     * overview) and an untracked wrap-up (last) — both labels NONE (D25).
+     *
+     * @return void
+     */
+    public function test_intro_and_final_bookends(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // Numbered sections in order: Introduction, the content section, Wrap-up.
+        $sections = array_values($DB->get_records_select(
+            'course_sections',
+            'course = :course AND section > 0',
+            ['course' => $courseid],
+            'section ASC'
+        ));
+        $this->assertCount(3, $sections);
+        $this->assertSame(get_string('introsection_name', 'local_coursegen'), $sections[0]->name);
+        $this->assertSame('Widgets', $sections[1]->name);
+        $this->assertSame(get_string('finalsection_name', 'local_coursegen'), $sections[2]->name);
+
+        // Both bookend labels are untracked; the intro carries the overview list.
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->section_label_completion($courseid, (int) $sections[0]->id));
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->section_label_completion($courseid, (int) $sections[2]->id));
+        $this->assertTrue($DB->record_exists_select(
+            'label',
+            'course = :c AND ' . $DB->sql_like('intro', ':covers'),
+            ['c' => $courseid, 'covers' => '%' . get_string('introsection_covers', 'local_coursegen') . '%']
+        ));
+    }
+
+    /**
+     * Despite the front-shift from the intro section, an assessed content section
+     * builds its activity in the correct (offset) section (D25).
+     *
+     * @return void
+     */
+    public function test_assessment_lands_in_offset_section(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+        $job = $this->approved_job_with([
+            ['title' => 'Reading', 'summary' => 's', 'assessment' => ['type' => 'none']],
+            ['title' => 'Assessed', 'summary' => 's', 'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2]],
+        ]);
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // Sections: 1 intro, 2 Reading, 3 Assessed, 4 wrap-up. The KC is in 3.
+        $kc = $DB->get_record('knowledgecheck', ['course' => $courseid], '*', MUST_EXIST);
+        $cm = get_coursemodule_from_instance('knowledgecheck', $kc->id);
+        $section = $DB->get_record('course_sections', ['id' => $cm->section], '*', MUST_EXIST);
+        $this->assertSame(3, (int) $section->section, 'The knowledge check is in the wrong (mis-offset) section.');
+        $this->assertSame('Assessed', $section->name);
+    }
+
+    /**
+     * A course thumbnail is set as the course image when images are opted in, and
+     * counts as one image against the sub-cap (D25).
+     *
+     * @return void
+     */
+    public function test_thumbnail_set_when_images_on(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'image' => ['generate' => true],
+                'assessment' => ['type' => 'none']],
+        ]);
+
+        $image = new stub_image_client(true);
+        $this->assertTrue((new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        $files = get_file_storage()->get_area_files(
+            \context_course::instance($courseid)->id,
+            'course',
+            'overviewfiles',
+            0,
+            'id',
+            false
+        );
+        $this->assertCount(1, $files, 'The course thumbnail was not set as the course image.');
+        // One section image plus the thumbnail.
+        $this->assertEquals(2, $image->call_count());
+    }
+
+    /**
+     * No thumbnail (and no failure) when images are off — i.e. no section opted in.
+     *
+     * @return void
+     */
+    public function test_thumbnail_skipped_when_images_off(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $image = new stub_image_client(true);
+        $this->assertTrue((new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        $this->assertEquals(0, $image->call_count(), 'An image was generated with no opt-in.');
+        $this->assertCount(0, get_file_storage()->get_area_files(
+            \context_course::instance($courseid)->id,
+            'course',
+            'overviewfiles',
+            0,
+            'id',
+            false
+        ));
+        $this->assertSame(
+            job_manager::STATUS_COMPLETE,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+    }
+
+    /**
+     * When the image sub-cap is exhausted by the section image, the thumbnail is
+     * skipped (not failed) and no course image is set (D25).
+     *
+     * @return void
+     */
+    public function test_thumbnail_skipped_when_subcap_exhausted(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('cap_image_count', 1, 'local_coursegen'); // Only one image this period.
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'image' => ['generate' => true],
+                'assessment' => ['type' => 'none']],
+        ]);
+
+        $image = new stub_image_client(true);
+        $this->assertTrue((new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // The one image went to the section; the thumbnail is skipped, not failed.
+        $this->assertEquals(1, $image->call_count());
+        $this->assertCount(0, get_file_storage()->get_area_files(
+            \context_course::instance($courseid)->id,
+            'course',
+            'overviewfiles',
+            0,
+            'id',
+            false
+        ));
+    }
+
+    /**
+     * The completion tracking of the (single) label in a given course section.
+     *
+     * @param int $courseid The course id.
+     * @param int $sectionid The course_sections.id.
+     * @return int A COMPLETION_TRACKING_* value.
+     */
+    private function section_label_completion(int $courseid, int $sectionid): int {
+        global $DB;
+        return (int) $DB->get_field_sql(
+            "SELECT cm.completion
+               FROM {course_modules} cm
+               JOIN {modules} m ON m.id = cm.module AND m.name = 'label'
+              WHERE cm.course = :courseid AND cm.section = :sectionid",
+            ['courseid' => $courseid, 'sectionid' => $sectionid]
+        );
+    }
+
+    /**
+     * The reading label's completion tracking for a single content-section course,
+     * excluding the untracked intro/wrap-up bookends (D25).
      *
      * @param int $courseid The course id.
      * @return int A COMPLETION_TRACKING_* value.
@@ -535,8 +728,13 @@ final class materializer_test extends \advanced_testcase {
             "SELECT cm.completion
                FROM {course_modules} cm
                JOIN {modules} m ON m.id = cm.module AND m.name = 'label'
-              WHERE cm.course = :courseid",
-            ['courseid' => $courseid]
+               JOIN {course_sections} s ON s.id = cm.section
+              WHERE cm.course = :courseid AND s.name NOT IN (:intro, :final)",
+            [
+                'courseid' => $courseid,
+                'intro' => get_string('introsection_name', 'local_coursegen'),
+                'final' => get_string('finalsection_name', 'local_coursegen'),
+            ]
         );
     }
 

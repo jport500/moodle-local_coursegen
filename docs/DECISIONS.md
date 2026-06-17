@@ -812,3 +812,53 @@ as a soft dependency "just in case" (dead code path).
 **Revisit if.** Credentialing becomes a core requirement of the builder itself (rather
 than an operator/stack concern) — re-introduce it as a deliberately-scoped integration,
 not an in-band materialize step.
+
+---
+
+## D25 — Course-structure enrichment: intro + wrap-up bookends and a course thumbnail (P19)
+
+**Decision.** The materializer brackets the generated content with two **untracked**
+bookend sections and sets a generated course image. All three live in the materializer
+— no blueprint, AI-prompt, or review-form change.
+
+- **Introduction** — the first numbered section in the pathway flow (section 0 is hidden
+  by default in format_pathway). Its content is *derived* from the editable course
+  description plus a "what you'll cover" list of the content section titles — no extra AI
+  call; re-materialize picks up an edited description.
+- **Wrap-up** — the last section, a short boilerplate (lang-string) closing note. It gives
+  the final content section a `<Next>` target (so its completion display refreshes on
+  navigation) and an obvious home for an operator-added certificate. **The plugin builds
+  the section only — it never creates a mod_coursecertificate and takes no dependency on
+  it.**
+- **Thumbnail** — a decorative cover generated via the existing image_client and set as
+  the course's "Course image" (the `overviewfiles` area). Gated by the same image opt-in
+  the sections use (≥1 image-flagged section) AND the image sub-cap; skipped — not failed
+  — when off or exhausted, and counted as one image against the budget. No alt text.
+
+**The shared correctness point.** The bookend labels are `COMPLETION_TRACKING_NONE`: a
+deliberate EXCEPTION to P14's one-tracked-activity-per-section rule (which applies to
+CONTENT sections so they're never uncompletable). They are orientation and closure, not
+learning units, so they must not become completion criteria — otherwise P15's "all
+tracked activities" would require "completing" the intro and the wrap-up, changing what
+finishing the course means. `configure_course_completion` selects `completion <> NONE`,
+so the criteria equal exactly the content/assessment tracked activities; the bookends
+contribute nothing. Because `add_named_section` appends and returns the real section
+number, inserting the intro first shifts content to sections 2…N+1 and the KC/quiz
+placement (which keys on the returned `sectionnum`) stays correct by construction.
+
+**Why.** A generated course that opens cold on the first content unit and ends abruptly
+reads as a dump, not a course. An overview, a closing section, and a cover image make it
+feel finished — at no extra AI cost for the bookends and one optional image for the
+cover. The wrap-up also resolves a real format_pathway lag: section progress is rendered
+server-side, so completing the last unit only reflects after a navigation — the `<Next>`
+into the wrap-up provides it.
+
+**Rejected.** A dedicated AI-written overview (extra call, another thing to keep in sync —
+deriving from the description is free and stays editable); putting the intro in section 0
+(hidden by default in pathway); auto-adding a mod_coursecertificate (credentialing is the
+operator's/stack's job, D24 — the plugin only provides the home); generating the
+thumbnail regardless of the image opt-in (would force a cover even when images are off).
+
+**Revisit if.** Operators want the bookends configurable/optional, or a course-card image
+even when section images are off (a separate "course image" opt-in distinct from section
+images).

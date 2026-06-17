@@ -147,6 +147,9 @@ class materializer {
 
         $imagebudget = $this->remaining_image_budget();
 
+        // Introduction bookend: the first section in the flow, untracked (D25).
+        $this->build_intro_section($course, $coursecontext, $blueprint);
+
         foreach ($blueprint->get_sections() as $i => $section) {
             if ($this->spend_exceeded($job)) {
                 $this->fail($job, 'spend cap exceeded mid-run');
@@ -192,8 +195,20 @@ class materializer {
             $this->create_label($course, $sectionnum, $html, $draftid, $labelcompletion);
         }
 
+        // Wrap-up bookend: the last section, untracked (D25) — closure and a
+        // <Next> target, and an obvious home for an operator-added certificate.
+        $this->build_final_section($course);
+
+        // Decorative course thumbnail, gated by the same image opt-in the sections
+        // use (a flagged section) and the image sub-cap; skipped, not failed, when
+        // off or exhausted (D25).
+        if ($blueprint->image_count() > 0 && $imagebudget > 0) {
+            $this->generate_course_thumbnail($job, $course, $coursecontext, $blueprint);
+        }
+
         // Require completion of every tracked activity so course completion fires
-        // (D22). Runs after all activities exist.
+        // (D22). The untracked bookends contribute nothing. Runs after all
+        // activities exist.
         self::configure_course_completion((int) $course->id);
 
         $this->set_status($job, job_manager::STATUS_COMPLETE);
@@ -288,7 +303,8 @@ class materializer {
      * @param int $draftitemid Draft area holding the embedded image, if any.
      * @param int $completion COMPLETION_TRACKING_MANUAL when the label is the
      *        section's completion signal, or COMPLETION_TRACKING_NONE when a
-     *        knowledge check carries it instead (D21).
+     *        knowledge check/quiz carries it instead (D21) or for an untracked
+     *        intro/wrap-up bookend (D25).
      * @return void
      */
     private function create_label(
@@ -314,6 +330,104 @@ class materializer {
             'completionpassgrade' => 0,
         ];
         add_moduleinfo($moduleinfo, $course);
+    }
+
+    /**
+     * Build the introduction bookend: the first section in the flow, holding a
+     * course overview derived (no extra AI call) from the editable course
+     * description plus a "what you'll cover" list of the content section titles.
+     * Its label is UNTRACKED (D25) — orientation, not a learning unit — so it is
+     * never part of the course-completion criteria.
+     *
+     * @param \stdClass $course The course.
+     * @param \context $coursecontext The course context.
+     * @param blueprint $blueprint The approved blueprint.
+     * @return void
+     */
+    private function build_intro_section(\stdClass $course, \context $coursecontext, blueprint $blueprint): void {
+        $sectionnum = $this->add_named_section($course, get_string('introsection_name', 'local_coursegen'));
+
+        $html = '';
+        if ($blueprint->get_description() !== '') {
+            $html .= format_text($blueprint->get_description(), FORMAT_PLAIN, ['context' => $coursecontext]);
+        }
+        $items = [];
+        foreach ($blueprint->get_sections() as $section) {
+            if ($section['title'] !== '') {
+                $items[] = \html_writer::tag('li', s($section['title']));
+            }
+        }
+        if ($items) {
+            $html .= \html_writer::tag('h4', get_string('introsection_covers', 'local_coursegen'));
+            $html .= \html_writer::tag('ul', implode('', $items));
+        }
+
+        $this->create_label($course, $sectionnum, $html, $this->new_draft_itemid(), COMPLETION_TRACKING_NONE);
+    }
+
+    /**
+     * Build the wrap-up bookend: a short closing section (boilerplate text). Its
+     * label is UNTRACKED (D25). The plugin builds the section only — it does not
+     * create a certificate and takes no dependency on mod_coursecertificate; an
+     * operator may add one here.
+     *
+     * @param \stdClass $course The course.
+     * @return void
+     */
+    private function build_final_section(\stdClass $course): void {
+        $sectionnum = $this->add_named_section($course, get_string('finalsection_name', 'local_coursegen'));
+        $html = \html_writer::tag('p', get_string('finalsection_body', 'local_coursegen'));
+        $this->create_label($course, $sectionnum, $html, $this->new_draft_itemid(), COMPLETION_TRACKING_NONE);
+    }
+
+    /**
+     * Generate a decorative course cover image and set it as the course's "Course
+     * image" (overviewfiles). Best-effort and skip-not-fail: a generation failure
+     * is logged and the build continues. Counts as one image against the sub-cap
+     * (the caller gates on opt-in + remaining budget). No alt text — decorative.
+     *
+     * @param \stdClass $job The job.
+     * @param \stdClass $course The course.
+     * @param \context $coursecontext The course context.
+     * @param blueprint $blueprint The blueprint (for the prompt).
+     * @return void
+     */
+    private function generate_course_thumbnail(
+        \stdClass $job,
+        \stdClass $course,
+        \context $coursecontext,
+        blueprint $blueprint
+    ): void {
+        $prompt = 'A clean, professional cover illustration for an online course titled "'
+            . $blueprint->get_title() . '". ' . $blueprint->get_description();
+        $result = $this->imageclient->generate_image($prompt, $coursecontext, (int) $job->userid);
+        $this->log(
+            $job,
+            self::TIER_IMAGE,
+            'generate_image',
+            $result->provider,
+            $result->model,
+            null,
+            null,
+            $result->success ? 1 : 0,
+            $result->success ? 'course thumbnail' : 'course thumbnail failed: ' . $result->error,
+            $result->success ? 'success' : 'failure'
+        );
+        if (!$result->success || $result->draftfile === null) {
+            return;
+        }
+
+        $fs = get_file_storage();
+        $fs->delete_area_files($coursecontext->id, 'course', 'overviewfiles', 0);
+        $filename = clean_param($result->draftfile->get_filename(), PARAM_FILE) ?: 'cover.png';
+        $fs->create_file_from_storedfile([
+            'contextid' => $coursecontext->id,
+            'component' => 'course',
+            'filearea' => 'overviewfiles',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => $filename,
+        ], $result->draftfile);
     }
 
     /**
