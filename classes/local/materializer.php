@@ -192,7 +192,17 @@ class materializer {
             // assessment was built it is the signal (label untracked); otherwise the
             // reading label carries the manual signal so the section stays completable.
             $labelcompletion = $assessmentbuilt ? COMPLETION_TRACKING_NONE : COMPLETION_TRACKING_MANUAL;
-            $this->create_label($course, $sectionnum, $html, $draftid, $labelcompletion);
+            $labelcmid = $this->create_label($course, $sectionnum, $html, $draftid, $labelcompletion);
+
+            // The assessment is built before the label (its completion outcome and any
+            // inline filter token must be known first), so it lands first in the
+            // section. Put the reading ahead of it so a visible assessment (a graded
+            // quiz, or a non-stealth knowledge check) sits at the END of the section.
+            // A stealth knowledge check is off the course page, so this only reorders
+            // the sequence, not what the learner sees (it stays inline in the reading).
+            if ($assessmentbuilt) {
+                $this->move_reading_to_front($course, $sectionnum, $labelcmid);
+            }
         }
 
         // Wrap-up bookend: the last section, untracked (D25) — closure and a
@@ -305,7 +315,7 @@ class materializer {
      *        section's completion signal, or COMPLETION_TRACKING_NONE when a
      *        knowledge check/quiz carries it instead (D21) or for an untracked
      *        intro/wrap-up bookend (D25).
-     * @return void
+     * @return int The created label's course-module id.
      */
     private function create_label(
         \stdClass $course,
@@ -313,7 +323,7 @@ class materializer {
         string $html,
         int $draftitemid,
         int $completion
-    ): void {
+    ): int {
         global $DB;
         $moduleinfo = (object) [
             'modulename' => 'label',
@@ -329,7 +339,30 @@ class materializer {
             'completiongradeitemnumber' => null,
             'completionpassgrade' => 0,
         ];
-        add_moduleinfo($moduleinfo, $course);
+        return (int) add_moduleinfo($moduleinfo, $course)->coursemodule;
+    }
+
+    /**
+     * Move the reading label to the front of its section so the section's
+     * assessment activity sits at the END, after the reading. The assessment is
+     * created before the label (its completion outcome and inline token must be
+     * resolved first), which would otherwise place it first. Only the reading and
+     * one assessment occupy a content section, so moving the reading ahead of the
+     * current first module is sufficient.
+     *
+     * @param \stdClass $course The course.
+     * @param int $sectionnum The content section number.
+     * @param int $labelcmid The reading label's course-module id.
+     * @return void
+     */
+    private function move_reading_to_front(\stdClass $course, int $sectionnum, int $labelcmid): void {
+        $cmids = get_fast_modinfo($course)->get_sections()[$sectionnum] ?? [];
+        if (count($cmids) < 2 || (int) $cmids[0] === $labelcmid) {
+            return;
+        }
+        // Move the reading before the current first module (the assessment), so the
+        // assessment ends up last. cmactions is the 5.2 replacement for moveto_module.
+        (new \core_courseformat\local\cmactions($course))->move_before($labelcmid, (int) $cmids[0]);
     }
 
     /**

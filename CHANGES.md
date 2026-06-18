@@ -3,6 +3,21 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.16.2 — 2026-06-18 (Fix: assessment placed last within its section)
+
+The reading now comes first in a content section and the assessment activity (knowledge
+check or graded quiz) sits last — "read, then assess". See DECISIONS D27.
+
+- The materializer still builds the assessment before the reading label (its completion
+  outcome and any inline filter token must be resolved first — D21/D23), then moves the
+  reading ahead of it via `core_courseformat\local\cmactions::move_before` (the Moodle 5.2
+  replacement for the deprecated `moveto_module`).
+- A stealth (inline) knowledge check is off the course page and renders inline at the end
+  of the reading regardless, so this only changes what a learner sees for a **visible**
+  assessment — a non-stealth knowledge check (filter disabled) or a graded quiz — which
+  previously appeared at the top of the section.
+- Completion model and IR/blueprint/prompt unchanged.
+
 ## v0.16.1 — 2026-06-18 (Fix: intro bookend duplicated section 0)
 
 Corrects the P19 introduction bookend. It added a *numbered* "Introduction" section on

@@ -936,3 +936,33 @@ cheaper); relying on objective-verb framing as the pitch lever (proven inert).
 re-generate-from-stored-params path), or the reading-pitch proves insufficient on a
 future provider (would justify the objective-rewrite pass), or length enforcement should
 escalate beyond one retry.
+
+## D27 — Assessment placed last within its section: read, then assess (P20 follow-up)
+
+**Decision.** Within a content section the reading comes first and the assessment activity
+(knowledge check or graded quiz) is **last**. The materializer still *builds* the
+assessment before the reading label — its completion outcome and any inline filter token
+must be resolved first (D21/D23) — and then moves the reading ahead of it via
+`core_courseformat\local\cmactions::move_before` (the Moodle 5.2 replacement for the
+deprecated `moveto_module`). A stealth (inline) knowledge check is off the course page and
+renders inline at the end of the reading regardless, so the reorder only changes what a
+learner sees for a **visible** assessment — a non-stealth knowledge check (filter disabled)
+or a graded quiz — which previously appeared at the *top* of the section.
+
+**Why.** "Read, then assess" is the expected flow. The build-assessment-first order (kept
+for the completion/token reasons above) was placing the visible assessment ahead of the
+reading.
+
+**Scope.** Reorder only — the completion model is unchanged (still exactly one tracked
+activity per section; the reading label or the assessment carries it as before), and the
+IR/blueprint/prompt are untouched. Each content section holds at most the reading label
+plus one assessment, so moving the reading to the front is sufficient.
+
+**Rejected.** Swapping the build order (creating the label first) — breaks the completion
+decision (which depends on whether the assessment built) and the stealth inline token
+(needs the knowledge check's UUID); both require building the assessment first.
+
+**Revisit if.** A section ever holds more than one assessment, or quizgenpro's
+per-second question-category idnumber collides when two assessments in one course bank
+within the same wall-clock second (latent; real generation spaces calls out by AI latency,
+but a fast/batch path could hit it).

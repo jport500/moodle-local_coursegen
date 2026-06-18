@@ -612,6 +612,75 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * Within a section, the reading comes first and the assessment activity (a
+     * knowledge check or a graded quiz) sits LAST — read first, then assess.
+     *
+     * @return void
+     */
+    public function test_assessment_is_last_in_its_section(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+
+        // A knowledge check and a quiz in separate courses: a single course context
+        // can't bank twice in the same wall-clock second (quizgenpro keys its
+        // question category by timestamp), so each assessment type gets its own.
+        $kcjob = $this->approved_job_with([
+            ['title' => 'KC', 'summary' => 's', 'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2]],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($kcjob));
+        $kccourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $kcjob->id]);
+        $kcmodinfo = get_fast_modinfo($kccourse);
+        $kccm = get_coursemodule_from_instance(
+            'knowledgecheck',
+            (int) $DB->get_field('knowledgecheck', 'id', ['course' => $kccourse], MUST_EXIST)
+        );
+        $this->assert_reading_then_assessment(
+            $kcmodinfo,
+            (int) $DB->get_field('course_sections', 'section', ['id' => $kccm->section]),
+            'knowledgecheck'
+        );
+
+        $quizjob = $this->approved_job_with([
+            ['title' => 'Quiz', 'summary' => 's', 'assessment' => ['type' => 'quiz', 'questioncount' => 2]],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($quizjob));
+        $quizcourse = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $quizjob->id]);
+        $quizmodinfo = get_fast_modinfo($quizcourse);
+        $quizcm = get_coursemodule_from_instance(
+            'quiz',
+            (int) $DB->get_field('quiz', 'id', ['course' => $quizcourse], MUST_EXIST)
+        );
+        $this->assert_reading_then_assessment(
+            $quizmodinfo,
+            (int) $DB->get_field('course_sections', 'section', ['id' => $quizcm->section]),
+            'quiz'
+        );
+    }
+
+    /**
+     * Assert a content section's modules are ordered reading-label-first, with the
+     * named assessment module last.
+     *
+     * @param \course_modinfo $modinfo The course modinfo.
+     * @param int $sectionnum The content section number.
+     * @param string $assessmod The assessment module name ('knowledgecheck' or 'quiz').
+     * @return void
+     */
+    private function assert_reading_then_assessment(\course_modinfo $modinfo, int $sectionnum, string $assessmod): void {
+        $names = array_values(array_map(
+            static fn(int $id): string => $modinfo->get_cm($id)->modname,
+            $modinfo->get_sections()[$sectionnum]
+        ));
+        $this->assertSame('label', $names[0], "Reading label should be first in section {$sectionnum}.");
+        $this->assertSame($assessmod, end($names), "{$assessmod} should be last in section {$sectionnum}.");
+    }
+
+    /**
      * A course thumbnail is set as the course image when images are opted in, and
      * counts as one image against the sub-cap (D25).
      *
