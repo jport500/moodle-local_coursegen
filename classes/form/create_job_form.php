@@ -72,6 +72,26 @@ class create_job_form extends \moodleform {
             $mform->freeze('mode');
         }
 
+        // Operator-controlled course depth (DECISIONS D26): two named, independent
+        // axes that steer the blueprint prompt, pre-selected to the site defaults.
+        $mform->addElement(
+            'select',
+            'audiencelevel',
+            get_string('field_audiencelevel', 'local_coursegen'),
+            \local_coursegen\local\course_depth::levels()
+        );
+        $mform->setDefault('audiencelevel', $this->_customdata['defaultlevel']);
+        $mform->addHelpButton('audiencelevel', 'field_audiencelevel', 'local_coursegen');
+
+        $mform->addElement(
+            'select',
+            'depth',
+            get_string('field_depth', 'local_coursegen'),
+            \local_coursegen\local\course_depth::depths()
+        );
+        $mform->setDefault('depth', $this->_customdata['defaultdepth']);
+        $mform->addHelpButton('depth', 'field_depth', 'local_coursegen');
+
         $this->add_action_buttons(true, get_string('field_generate', 'local_coursegen'));
     }
 

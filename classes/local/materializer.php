@@ -441,11 +441,16 @@ class materializer {
      */
     private function draft_reading(\stdClass $job, \context $context, blueprint $blueprint, array $section): string {
         $objectives = $section['objectives'] ? implode('; ', $section['objectives']) : '(none stated)';
+        // The audience pitch lives here, in the reading prose (D26 Fix 2).
+        $pitch = course_depth::reading_pitch($job->audiencelevel ?? null);
         $prompt = <<<PROMPT
 Write the reading content for one section of the online course
 "{$blueprint->get_title()}". Section: "{$section['title']}".
 Learning objectives: {$objectives}.
 Section summary: {$section['summary']}.
+
+Audience: {$pitch}
+
 Return a clean HTML fragment (headings, paragraphs, lists) suitable for
 embedding directly in a page — no <html>/<head>/<body> wrapper and no code
 fences.

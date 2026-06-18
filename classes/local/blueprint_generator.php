@@ -92,7 +92,8 @@ class blueprint_generator {
             }
         }
 
-        $result = $this->call_and_log($this->blueprint_prompt($sourcetext), $job, $context, 'synthesis');
+        $fragment = course_depth::prompt_fragment($job->audiencelevel ?? null, $job->depth ?? null);
+        $result = $this->call_and_log($this->blueprint_prompt($sourcetext, $fragment), $job, $context, 'synthesis');
         if (!$result->success) {
             $this->set_status($job, job_manager::STATUS_FAILED);
             return false;
@@ -108,6 +109,10 @@ class blueprint_generator {
             $this->fail_job($job, $context, 'blueprint missing title or sections');
             return false;
         }
+
+        // Best-effort length enforcement: one bounded re-prompt if the section
+        // count missed the operator's depth range (D26 Fix 1).
+        $blueprint = $this->enforce_section_count($blueprint, $sourcetext, $fragment, $job, $context);
 
         blueprint_store::save_new_version($job, $blueprint, (int) $job->userid);
         $DB->set_field('coursegen_job', 'estimatedspend', $blueprint->estimate_units(), ['id' => $job->id]);
@@ -283,13 +288,78 @@ class blueprint_generator {
     }
 
     /**
+     * If the blueprint's section count missed the operator's depth range, re-prompt
+     * once to correct it (D26 Fix 1). Best-effort: the retry is audited and counted
+     * against the spend cap, and is skipped when the cap is reached. A valid retry
+     * is used as-is (even if still slightly off — a thin source may not support the
+     * target); otherwise the original blueprint is kept. The job is never failed
+     * over the count.
+     *
+     * @param blueprint $blueprint The parsed, valid blueprint.
+     * @param string $sourcetext The corpus (or reduced summaries).
+     * @param string $depthfragment The depth/level design targets.
+     * @param \stdClass $job The job.
+     * @param \context $context The job context.
+     * @return blueprint The original or the corrected blueprint.
+     */
+    private function enforce_section_count(
+        blueprint $blueprint,
+        string $sourcetext,
+        string $depthfragment,
+        \stdClass $job,
+        \context $context
+    ): blueprint {
+        $profile = course_depth::profile($job->audiencelevel ?? null, $job->depth ?? null);
+        $count = $blueprint->section_count();
+        $min = $profile['sectionmin'];
+        $max = $profile['sectionmax'];
+        if ($count >= $min && $count <= $max) {
+            return $blueprint;
+        }
+
+        if (spend_governor::over_spend_cap()) {
+            audit_log::record(
+                (int) $job->id,
+                (int) $job->userid,
+                self::STAGE,
+                audit_log::SUCCESS,
+                "section count {$count} outside {$min}-{$max}; retry skipped (period spend cap reached)",
+                ['tier' => self::TIER]
+            );
+            return $blueprint;
+        }
+
+        $note = "A previous attempt produced {$count} sections, which is outside the required "
+            . "range. Produce a revised outline of the SAME course with approximately {$min}-{$max} "
+            . "sections (no fewer than {$min}, no more than {$max}), splitting or merging topics to fit.";
+        $result = $this->call_and_log(
+            $this->blueprint_prompt($sourcetext, $depthfragment, $note),
+            $job,
+            $context,
+            "recount sections ({$count} -> {$min}-{$max})"
+        );
+        if (!$result->success) {
+            return $blueprint;
+        }
+        $decoded = blueprint::decode_object($result->content);
+        if ($decoded === null) {
+            return $blueprint;
+        }
+        $retry = blueprint::from_array($decoded);
+        return $retry->is_valid() ? $retry : $blueprint;
+    }
+
+    /**
      * Build the synthesis prompt that asks for the blueprint as strict JSON.
      *
      * @param string $sourcetext The corpus (or reduced summaries).
+     * @param string $depthfragment The operator depth/level design targets (D26).
+     * @param string|null $recountnote An optional correction appended last when a
+     *      prior attempt missed the section-count range (D26 Fix 1).
      * @return string
      */
-    private function blueprint_prompt(string $sourcetext): string {
-        return <<<PROMPT
+    private function blueprint_prompt(string $sourcetext, string $depthfragment, ?string $recountnote = null): string {
+        $prompt = <<<PROMPT
 You are an instructional designer. From the SOURCE MATERIAL below, design a
 structured online course. Respond with ONLY a JSON object (no prose, no code
 fences) of exactly this shape:
@@ -312,7 +382,13 @@ Produce a coherent ordering even if the source is unstructured.
 
 SOURCE MATERIAL:
 {$sourcetext}
+
+{$depthfragment}
 PROMPT;
+        if ($recountnote !== null) {
+            $prompt .= "\n\n" . $recountnote;
+        }
+        return $prompt;
     }
 
     /**

@@ -87,8 +87,9 @@ class section_regenerator {
             return false;
         }
 
+        $fragment = course_depth::prompt_fragment($job->audiencelevel ?? null, $job->depth ?? null);
         $result = $this->client->generate(
-            $this->section_prompt($blueprint, $sections[$index]),
+            $this->section_prompt($blueprint, $sections[$index], $fragment),
             $context,
             $userid,
         );
@@ -152,9 +153,10 @@ class section_regenerator {
      *
      * @param blueprint $blueprint The current blueprint (for course context).
      * @param array $section The section being replaced.
+     * @param string $depthfragment The operator depth/level design targets (D26).
      * @return string
      */
-    private function section_prompt(blueprint $blueprint, array $section): string {
+    private function section_prompt(blueprint $blueprint, array $section, string $depthfragment): string {
         $coursetitle = $blueprint->get_title();
         $sectiontitle = $section['title'];
         return <<<PROMPT
@@ -169,6 +171,11 @@ Respond with ONLY a JSON object (no prose, no code fences) of this shape:
   "image": {"generate": true or false, "prompthint": "diagram idea or empty"},
   "assessment": {"type": "knowledgecheck" or "none", "questioncount": integer, "notes": "optional"}
 }
+
+Keep the section consistent with these targets (the SECTION COUNT target does not
+apply to a single-section regeneration — apply the audience and objective targets):
+
+{$depthfragment}
 PROMPT;
     }
 }

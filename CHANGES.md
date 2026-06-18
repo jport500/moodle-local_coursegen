@@ -3,6 +3,32 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.16.0 — 2026-06-17 (Phase 20: operator-controlled course depth)
+
+Two named, independent create-time controls let the operator steer the course instead of
+the model picking length and pitch on a whim. Purely additive — the blueprint prompt
+previously placed no constraint on either. See DECISIONS D26.
+
+- **Audience level** (beginner / intermediate / advanced) and **Length/depth** (brief /
+  standard / comprehensive) — two `char(20)` columns on `coursegen_job`, seeded from two
+  admin defaults (`default_audience_level` / `default_depth`, mirroring `default_mode`),
+  chosen per job on the create form, and shown read-only on the job page. Create-time
+  only; changing them after generation is out of scope for v1.
+- All tuning lives in one seam, `local\course_depth` (section ranges, the blueprint prompt
+  fragment, and the reading-pitch prose).
+- **Length** is steered by a prompt range AND enforced best-effort: if the parsed
+  blueprint's section count misses the depth range, the generator re-prompts **once**
+  (audited, counted against the spend cap, skipped if the cap is reached) citing the
+  observed miss; a valid retry is used, else the original is kept. The job is never failed
+  over the count.
+- **Pitch** is threaded into the materializer's per-section reading generation as a prose
+  instruction (vocabulary, assumed knowledge, how concepts are explained) — where the
+  audience axis actually bites — not as objective-verb framing the model treats as
+  boilerplate. The blueprint IR schema is unchanged.
+- Real-transport smoke (opposite ends, same source, materialized): Brief+Beginner = 4
+  sections of plain, term-defining prose; Comprehensive+Advanced = 8 sections of concise,
+  technical prose. Both axes visibly move.
+
 ## v0.15.0 — 2026-06-17 (Phase 19: course-structure enrichment)
 
 Brackets the generated content with an intro and a wrap-up section and gives the

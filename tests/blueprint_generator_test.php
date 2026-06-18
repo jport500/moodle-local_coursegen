@@ -62,11 +62,11 @@ final class blueprint_generator_test extends \advanced_testcase {
 
         $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
         $this->assertSame(job_manager::STATUS_BLUEPRINTED, $job->status);
-        $this->assertEquals(2 * 700 + 1 * 1000, (int) $job->estimatedspend);
+        $this->assertEquals(5 * 700 + 1 * 1000, (int) $job->estimatedspend);
 
         $record = $DB->get_record('coursegen_blueprint', ['jobid' => $job->id, 'iscurrent' => 1], '*', MUST_EXIST);
         $this->assertSame('Test Course', $record->title);
-        $this->assertSame(2, \local_coursegen\local\blueprint::from_json($record->content)->section_count());
+        $this->assertSame(5, \local_coursegen\local\blueprint::from_json($record->content)->section_count());
 
         $log = $DB->get_record(
             'coursegen_log',
@@ -106,6 +106,129 @@ final class blueprint_generator_test extends \advanced_testcase {
         $this->assertSame(0, $stub->call_count(), 'A reasoning call was made despite the cap.');
         $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
         $this->assertSame(job_manager::STATUS_FAILED, $job->status);
+    }
+
+    /**
+     * The operator's depth/level (D26) is woven into the assembled synthesis
+     * prompt: a Comprehensive + Advanced job carries the wide section range and
+     * the Evaluate-level framing; a Brief + Beginner job carries the opposite.
+     *
+     * @return void
+     */
+    public function test_depth_targets_are_woven_into_the_prompt(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $job = $this->extracted_job(['A short paragraph about widgets and gears.']);
+        $DB->set_field('coursegen_job', 'audiencelevel', 'advanced', ['id' => $job->id]);
+        $DB->set_field('coursegen_job', 'depth', 'comprehensive', ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json())]);
+        (new blueprint_generator($stub))->generate_for_job($job);
+
+        $prompt = $stub->prompts()[0];
+        $this->assertStringContainsString('COURSE DESIGN TARGETS', $prompt);
+        $this->assertStringContainsString('8-12 sections', $prompt);
+        $this->assertStringContainsString('Evaluate', $prompt);
+        // The JSON contract is unchanged — the shape the model must return is intact.
+        $this->assertStringContainsString('"objectives"', $prompt);
+        $this->assertStringContainsString('"assessment"', $prompt);
+
+        // The opposite end produces the opposite guidance.
+        $job2 = $this->extracted_job(['Another short paragraph about levers.']);
+        $DB->set_field('coursegen_job', 'audiencelevel', 'beginner', ['id' => $job2->id]);
+        $DB->set_field('coursegen_job', 'depth', 'brief', ['id' => $job2->id]);
+        $job2 = $DB->get_record('coursegen_job', ['id' => $job2->id], '*', MUST_EXIST);
+
+        $stub2 = new stub_text_client([$this->ok($this->blueprint_json())]);
+        (new blueprint_generator($stub2))->generate_for_job($job2);
+        $prompt2 = $stub2->prompts()[0];
+        $this->assertStringContainsString('3-4 sections', $prompt2);
+        $this->assertStringContainsString('no prior knowledge', $prompt2);
+        $this->assertStringNotContainsString('8-12 sections', $prompt2);
+    }
+
+    /**
+     * Length enforcement (D26 Fix 1): a first blueprint whose section count misses
+     * the depth range triggers exactly one re-prompt, and the in-range retry is the
+     * version that gets stored.
+     *
+     * @return void
+     */
+    public function test_out_of_range_count_triggers_one_reprompt(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // Brief => range 3-4. First response 7 sections (over), retry 4 (in range).
+        $job = $this->extracted_job(['A short paragraph about widgets and gears.']);
+        $DB->set_field('coursegen_job', 'depth', 'brief', ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $stub = new stub_text_client([
+            $this->ok($this->blueprint_json_n(7)),
+            $this->ok($this->blueprint_json_n(4)),
+        ]);
+        $ok = (new blueprint_generator($stub))->generate_for_job($job);
+
+        $this->assertTrue($ok);
+        $this->assertSame(2, $stub->call_count(), 'Expected exactly one re-prompt.');
+        // The re-prompt cites the observed miss and the target range.
+        $this->assertStringContainsString('produced 7 sections', $stub->prompts()[1]);
+        $this->assertStringContainsString('3-4', $stub->prompts()[1]);
+
+        $record = $DB->get_record('coursegen_blueprint', ['jobid' => $job->id, 'iscurrent' => 1], '*', MUST_EXIST);
+        $this->assertSame(4, \local_coursegen\local\blueprint::from_json($record->content)->section_count());
+    }
+
+    /**
+     * An in-range first response is accepted with no re-prompt (D26 Fix 1).
+     *
+     * @return void
+     */
+    public function test_in_range_count_does_not_reprompt(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // Standard => range 5-7. A 6-section response is in range.
+        $job = $this->extracted_job(['A short paragraph about widgets and gears.']);
+        $DB->set_field('coursegen_job', 'depth', 'standard', ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json_n(6))]);
+        $ok = (new blueprint_generator($stub))->generate_for_job($job);
+
+        $this->assertTrue($ok);
+        $this->assertSame(1, $stub->call_count(), 'No re-prompt expected for an in-range count.');
+        $record = $DB->get_record('coursegen_blueprint', ['jobid' => $job->id, 'iscurrent' => 1], '*', MUST_EXIST);
+        $this->assertSame(6, \local_coursegen\local\blueprint::from_json($record->content)->section_count());
+    }
+
+    /**
+     * If the re-prompt also misses (or returns junk), the original is kept and the
+     * job still succeeds — enforcement is best-effort, never fatal (D26 Fix 1).
+     *
+     * @return void
+     */
+    public function test_failed_retry_keeps_original_and_succeeds(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        // Comprehensive => range 8-12. First gives 5 (under); retry returns junk.
+        $job = $this->extracted_job(['A short paragraph about widgets and gears.']);
+        $DB->set_field('coursegen_job', 'depth', 'comprehensive', ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $stub = new stub_text_client([
+            $this->ok($this->blueprint_json_n(5)),
+            $this->ok('not valid json'),
+        ]);
+        $ok = (new blueprint_generator($stub))->generate_for_job($job);
+
+        $this->assertTrue($ok, 'A failed retry must not fail the job.');
+        $this->assertSame(2, $stub->call_count());
+        $record = $DB->get_record('coursegen_blueprint', ['jobid' => $job->id, 'iscurrent' => 1], '*', MUST_EXIST);
+        $this->assertSame(5, \local_coursegen\local\blueprint::from_json($record->content)->section_count());
     }
 
     /**
@@ -314,32 +437,59 @@ final class blueprint_generator_test extends \advanced_testcase {
     }
 
     /**
-     * A valid blueprint JSON document (2 sections, 1 image).
+     * A valid blueprint JSON document with exactly $n plain sections.
+     *
+     * @param int $n The section count.
+     * @return string
+     */
+    private function blueprint_json_n(int $n): string {
+        $sections = [];
+        for ($i = 1; $i <= $n; $i++) {
+            $sections[] = [
+                'title' => "Section {$i}",
+                'objectives' => ["Objective {$i}"],
+                'summary' => "Summary {$i}",
+                'image' => ['generate' => false],
+                'assessment' => ['type' => 'none', 'questioncount' => 0],
+            ];
+        }
+        return json_encode(['title' => 'Sized Course', 'description' => 'A course.', 'sections' => $sections]);
+    }
+
+    /**
+     * A valid blueprint JSON document (5 sections, 1 image) — sized within the
+     * default 'standard' depth range (5-7) so length enforcement does not fire.
      *
      * @return string
      */
     private function blueprint_json(): string {
-        return json_encode([
-            'title' => 'Test Course',
-            'description' => 'A test course.',
-            'sections' => [
-                [
-                    'title' => 'Intro',
-                    'objectives' => ['Understand widgets'],
-                    'contenttype' => 'page',
-                    'summary' => 'Intro summary',
-                    'image' => ['generate' => true, 'prompthint' => 'a diagram'],
-                    'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 3],
-                ],
-                [
-                    'title' => 'Advanced',
-                    'objectives' => ['Apply widgets'],
-                    'contenttype' => 'book',
-                    'summary' => 'Advanced summary',
-                    'image' => ['generate' => false],
-                    'assessment' => ['type' => 'none', 'questioncount' => 0],
-                ],
+        $sections = [
+            [
+                'title' => 'Intro',
+                'objectives' => ['Understand widgets'],
+                'contenttype' => 'page',
+                'summary' => 'Intro summary',
+                'image' => ['generate' => true, 'prompthint' => 'a diagram'],
+                'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 3],
             ],
-        ]);
+            [
+                'title' => 'Advanced',
+                'objectives' => ['Apply widgets'],
+                'contenttype' => 'book',
+                'summary' => 'Advanced summary',
+                'image' => ['generate' => false],
+                'assessment' => ['type' => 'none', 'questioncount' => 0],
+            ],
+        ];
+        for ($i = 3; $i <= 5; $i++) {
+            $sections[] = [
+                'title' => "Section {$i}",
+                'objectives' => ["Objective {$i}"],
+                'summary' => "Summary {$i}",
+                'image' => ['generate' => false],
+                'assessment' => ['type' => 'none', 'questioncount' => 0],
+            ];
+        }
+        return json_encode(['title' => 'Test Course', 'description' => 'A test course.', 'sections' => $sections]);
     }
 }

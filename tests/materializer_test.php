@@ -915,6 +915,50 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * The audience level (D26 Fix 2) is threaded into the per-section reading
+     * prompt as a prose pitch — beginner and advanced jobs ask for visibly
+     * different prose from the drafting tier.
+     *
+     * @return void
+     */
+    public function test_audience_level_pitches_the_reading_prompt(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $section = [[
+            'title' => 'Topic', 'objectives' => ['Learn it'], 'summary' => 'About the topic.',
+            'image' => ['generate' => false], 'assessment' => ['type' => 'none', 'questioncount' => 0],
+        ]];
+
+        // Beginner job.
+        $job = $this->approved_job_with($section);
+        $DB->set_field('coursegen_job', 'audiencelevel', 'beginner', ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+        $beginnerstub = $this->text();
+        $this->assertTrue(
+            (new materializer($beginnerstub, new stub_image_client(false), new stub_quiz_client(true)))->materialize($job)
+        );
+        $beginnerprompt = $beginnerstub->prompts()[0];
+        $this->assertStringContainsString('complete beginner', $beginnerprompt);
+        $this->assertStringContainsString('define every term', $beginnerprompt);
+        $this->assertStringNotContainsString('working expertise', $beginnerprompt);
+
+        // Advanced job, same section.
+        $job2 = $this->approved_job_with($section);
+        $DB->set_field('coursegen_job', 'audiencelevel', 'advanced', ['id' => $job2->id]);
+        $job2 = $DB->get_record('coursegen_job', ['id' => $job2->id], '*', MUST_EXIST);
+        $advancedstub = $this->text();
+        $this->assertTrue(
+            (new materializer($advancedstub, new stub_image_client(false), new stub_quiz_client(true)))->materialize($job2)
+        );
+        $advancedprompt = $advancedstub->prompts()[0];
+        $this->assertStringContainsString('working expertise', $advancedprompt);
+        $this->assertStringContainsString('tradeoffs', $advancedprompt);
+        $this->assertStringNotContainsString('complete beginner', $advancedprompt);
+    }
+
+    /**
      * Insert an approved job with the given section specs.
      *
      * @param array[] $sections Section specs in blueprint::from_array shape.

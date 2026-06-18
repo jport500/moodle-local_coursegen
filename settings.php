@@ -155,6 +155,24 @@ if ($hassiteconfig) {
         0
     ));
 
+    // House defaults for the two create-time depth controls (DECISIONS D26). The
+    // create form pre-selects these; the operator may still change them per job.
+    $settings->add(new admin_setting_configselect(
+        'local_coursegen/default_audience_level',
+        get_string('setting_default_audience_level', 'local_coursegen'),
+        get_string('setting_default_audience_level_desc', 'local_coursegen'),
+        \local_coursegen\local\course_depth::DEFAULT_LEVEL,
+        \local_coursegen\local\course_depth::levels()
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_coursegen/default_depth',
+        get_string('setting_default_depth', 'local_coursegen'),
+        get_string('setting_default_depth_desc', 'local_coursegen'),
+        \local_coursegen\local\course_depth::DEFAULT_DEPTH,
+        \local_coursegen\local\course_depth::depths()
+    ));
+
     $settings->add(new admin_setting_configcheckbox(
         'local_coursegen/image_optin_default',
         get_string('setting_image_optin_default', 'local_coursegen'),

@@ -862,3 +862,62 @@ thumbnail regardless of the image opt-in (would force a cover even when images a
 **Revisit if.** Operators want the bookends configurable/optional, or a course-card image
 even when section images are off (a separate "course image" opt-in distinct from section
 images).
+
+## D26 — Operator-controlled course depth: audience level + length/depth (P20)
+
+**Decision.** Two named, independent create-time controls steer the generated course,
+filling a vacuum (the prompt previously placed no constraint on length or pitch — ~5
+sections was pure model habit):
+- **Audience level** — beginner | intermediate | advanced.
+- **Length/depth** — brief | standard | comprehensive.
+
+They are stored as two `char(20)` columns on `coursegen_job` (`audiencelevel`, `depth`;
+defaults intermediate/standard), seeded from two admin settings
+(`default_audience_level`, `default_depth`) mirroring `default_mode`, and chosen per job
+on the create form. They are **create-time only** (D26-b): changing them after generation
+is out of scope for v1 — the operator edits sections at the review gate as today. The
+chosen pair is surfaced read-only on the job page (D26-c). All tuning lives in one seam,
+`local\course_depth` (ranges + prompt fragments + reading pitch).
+
+Target table (D26-a, confirmed): Brief ~3-4 / Standard ~5-7 / Comprehensive ~8-12
+sections (non-overlapping ranges, expressed as "approximately N-M", never a hard count);
+Beginner=Remember/Understand, Intermediate=Apply/Analyze, Advanced=Analyze/Evaluate.
+
+**Each axis acts where it actually bites.** The first cut wired both axes as guidance in
+the blueprint prompt; a real-transport smoke proved that inert against the reasoning model
+(gpt-4o) — and, more sharply, exposed that the smoke had been comparing two jobs whose
+depth/level never persisted (the live DB lacked the columns until upgraded), so both ran
+at the defaults. With the columns present the two axes land where they belong:
+- **Length** is steered by a prompt range AND enforced best-effort: after the blueprint
+  parses, if the section count misses the depth range, `blueprint_generator` re-prompts
+  **once** (audited, counted against the spend cap, skipped if the cap is reached) citing
+  the observed miss; a valid retry is used, else the original is kept. The job is never
+  failed over the count — a thin source that can't support Comprehensive lands at the
+  nearest feasible end.
+- **Pitch** is a prose instruction threaded into the materializer's per-section reading
+  generation (`course_depth::reading_pitch`) — vocabulary, assumed knowledge, how
+  concepts are explained — which is a highly compliant instruction, not the objective-verb
+  framing the model treated as boilerplate. Objective-level (Bloom) framing stays in the
+  blueprint prompt but is no longer relied on as the pitch lever.
+
+Smoke proof (same rich source, opposite ends, materialized): Brief+Beginner = 4 sections
+with plain, term-defining prose; Comprehensive+Advanced = 8 sections with concise,
+technical prose surfacing tradeoffs. Both axes visibly move.
+
+**Scope.** The blueprint IR schema does NOT change — no new JSON fields, no
+blueprint-validation or edit-form-schema changes. Section count stays a RANGE enforced by
+re-prompt (not a stored count); pitch is a prose instruction. The only guard relaxed from
+the original brief is "guidance-only": one bounded re-prompt plus the materializer
+reading-pitch are in scope. `DEFAULT_QUESTION_COUNT` is untouched — the audience axis
+influences question difficulty via Bloom's framing, not a new question-count knob.
+
+**Rejected.** A 1-5 slider (a bare number conflates the two axes and is uninterpretable —
+named selects instead); a hard section count (a range lets the model adapt to the
+material); post-generation depth changes (v1 edits sections at the gate); enforcing pitch
+by a second objective-rewrite pass (the reading-prose instruction is sufficient and
+cheaper); relying on objective-verb framing as the pitch lever (proven inert).
+
+**Revisit if.** Operators want to change depth/level after generation (would need a
+re-generate-from-stored-params path), or the reading-pitch proves insufficient on a
+future provider (would justify the objective-rewrite pass), or length enforcement should
+escalate beyond one retry.

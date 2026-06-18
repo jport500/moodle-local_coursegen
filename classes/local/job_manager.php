@@ -97,6 +97,8 @@ class job_manager {
      * @param string $mode 'outlinefirst' or 'automatic'.
      * @param string|null $topic Optional topic prompt.
      * @param int|null $draftitemid Optional draft area id holding uploaded files.
+     * @param string|null $audiencelevel Operator audience pitch (D26); defaulted/clamped.
+     * @param string|null $depth Operator length/depth (D26); defaulted/clamped.
      * @return int The new job id.
      * @throws \moodle_exception When there is no usable source or limits are exceeded.
      */
@@ -105,7 +107,9 @@ class job_manager {
         int $userid,
         string $mode,
         ?string $topic,
-        ?int $draftitemid
+        ?int $draftitemid,
+        ?string $audiencelevel = null,
+        ?string $depth = null
     ): int {
         global $DB, $CFG;
         require_once($CFG->libdir . '/filelib.php');
@@ -125,6 +129,8 @@ class job_manager {
             'contextid' => $context->id,
             'courseid' => null,
             'mode' => ($mode === 'automatic') ? 'automatic' : 'outlinefirst',
+            'audiencelevel' => course_depth::normalize_level($audiencelevel),
+            'depth' => course_depth::normalize_depth($depth),
             'status' => self::STATUS_EXTRACTING,
             'estimatedspend' => null,
             'actualspend' => null,

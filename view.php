@@ -75,6 +75,18 @@ echo html_writer::tag(
     ['class' => 'text-muted']
 );
 
+// Surface what depth/level was asked for, read-only (D26-c).
+$levellabels = \local_coursegen\local\course_depth::levels();
+$depthlabels = \local_coursegen\local\course_depth::depths();
+echo html_writer::tag(
+    'p',
+    get_string('jobdepth', 'local_coursegen', (object) [
+        'level' => $levellabels[\local_coursegen\local\course_depth::normalize_level($job->audiencelevel ?? null)],
+        'depth' => $depthlabels[\local_coursegen\local\course_depth::normalize_depth($job->depth ?? null)],
+    ]),
+    ['class' => 'text-muted']
+);
+
 // Phase-specific guidance and the primary call to action.
 switch ($phase) {
     case job_manager::PHASE_PROCESSING:

@@ -61,6 +61,13 @@ if ($action === 'create') {
     $maxbytes = job_manager::max_source_bytes();
     $defaultmode = get_config('local_coursegen', 'default_mode') ?: 'outlinefirst';
     $modelocked = (bool) get_config('local_coursegen', 'lock_mode');
+    // House defaults for the depth controls, clamped to known values (D26).
+    $defaultlevel = \local_coursegen\local\course_depth::normalize_level(
+        get_config('local_coursegen', 'default_audience_level') ?: null
+    );
+    $defaultdepth = \local_coursegen\local\course_depth::normalize_depth(
+        get_config('local_coursegen', 'default_depth') ?: null
+    );
 
     $draftitemid = file_get_submitted_draft_itemid('sources');
     file_prepare_draft_area(
@@ -76,11 +83,15 @@ if ($action === 'create') {
         'filemanageroptions' => create_job_form::filemanager_options($maxbytes),
         'defaultmode' => $defaultmode,
         'modelocked' => $modelocked,
+        'defaultlevel' => $defaultlevel,
+        'defaultdepth' => $defaultdepth,
     ]);
     $form->set_data([
         'contextid' => $context->id,
         'sources' => $draftitemid,
         'mode' => $defaultmode,
+        'audiencelevel' => $defaultlevel,
+        'depth' => $defaultdepth,
     ]);
 
     if ($form->is_cancelled()) {
@@ -92,7 +103,9 @@ if ($action === 'create') {
             $USER->id,
             $mode,
             $data->topic ?? null,
-            $data->sources ?? null
+            $data->sources ?? null,
+            $data->audiencelevel ?? $defaultlevel,
+            $data->depth ?? $defaultdepth
         );
         // Land the operator on the job page so they watch it progress, rather
         // than a flash notification on a dead page.

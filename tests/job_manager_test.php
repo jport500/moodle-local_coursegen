@@ -66,6 +66,53 @@ final class job_manager_test extends \advanced_testcase {
     }
 
     /**
+     * The operator depth controls (D26) round-trip: explicit values persist,
+     * and missing or unknown values clamp to the house defaults.
+     *
+     * @return void
+     */
+    public function test_depth_controls_round_trip_and_clamp(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $context = $this->category_context();
+
+        // Explicit values persist verbatim.
+        $jobid = job_manager::create_job(
+            $context,
+            $this->admin_id(),
+            'outlinefirst',
+            'Advanced widgets.',
+            null,
+            'advanced',
+            'comprehensive'
+        );
+        $job = $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
+        $this->assertSame('advanced', $job->audiencelevel);
+        $this->assertSame('comprehensive', $job->depth);
+
+        // Omitted values fall back to the defaults.
+        $jobid = job_manager::create_job($context, $this->admin_id(), 'outlinefirst', 'Default widgets.', null);
+        $job = $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
+        $this->assertSame('intermediate', $job->audiencelevel);
+        $this->assertSame('standard', $job->depth);
+
+        // Unknown values are clamped, never stored.
+        $jobid = job_manager::create_job(
+            $context,
+            $this->admin_id(),
+            'outlinefirst',
+            'Junk widgets.',
+            null,
+            'wizard',
+            'epic'
+        );
+        $job = $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
+        $this->assertSame('intermediate', $job->audiencelevel);
+        $this->assertSame('standard', $job->depth);
+    }
+
+    /**
      * An uploaded file becomes a pending source with the file in the permanent area.
      *
      * @return void

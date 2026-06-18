@@ -30,7 +30,9 @@ round-trip.
 Through the UI — open a course **category**, then its settings (the category
 cog / "Category settings" menu) → **Course builder** (visible to users with
 `local/coursegen:generate` in that category). That hub lists the category's jobs;
-click **Create a generation job** → upload a file or enter a topic. On submit you
+click **Create a generation job** → upload a file or enter a topic. The form also
+offers **Audience level** and **Length and depth** selects (D26), pre-filled from the
+site defaults (Site admin → Plugins → Local plugins → Course generator). On submit you
 land on the **job page**, which shows progress and refreshes itself as the
 scheduled tasks run (processing → review → complete), links to the built course
 when done, and shows the reason if a stage fails. Or via CLI:
@@ -43,6 +45,13 @@ php local/coursegen/cli/extract.php --topic="Introduction to widgets" --category
 
 - [ ] Note the printed **job id**.
 - [ ] Job status reaches `extracted`.
+- [ ] The job page shows a read-only **"Requested: &lt;level&gt; · &lt;depth&gt;"** line
+  reflecting the controls chosen at creation (D26).
+- [ ] **Depth visibly steers the output** — generate two jobs from the *same* source at
+  opposite ends (Brief + Beginner vs Comprehensive + Advanced): the brief course has
+  noticeably fewer sections and plainer, term-defining reading prose; the comprehensive
+  course has more sections and concise, technical prose. This is the proof the controls do
+  something.
 
 ## 2. Blueprint (real provider call)
 

@@ -78,5 +78,38 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026061619, 'local', 'coursegen');
     }
 
+    if ($oldversion < 2026061700) {
+        // P20 (D26): operator-controlled course depth. Add the two create-time
+        // params; existing rows take the column DEFAULTs (intermediate / standard).
+        $table = new xmldb_table('coursegen_job');
+        $audiencelevel = new xmldb_field(
+            'audiencelevel',
+            XMLDB_TYPE_CHAR,
+            '20',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            'intermediate',
+            'mode'
+        );
+        if (!$dbman->field_exists($table, $audiencelevel)) {
+            $dbman->add_field($table, $audiencelevel);
+        }
+        $depth = new xmldb_field(
+            'depth',
+            XMLDB_TYPE_CHAR,
+            '20',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            'standard',
+            'audiencelevel'
+        );
+        if (!$dbman->field_exists($table, $depth)) {
+            $dbman->add_field($table, $depth);
+        }
+        upgrade_plugin_savepoint(true, 2026061700, 'local', 'coursegen');
+    }
+
     return true;
 }
