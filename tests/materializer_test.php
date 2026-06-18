@@ -533,8 +533,9 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
-     * The build is bracketed by an untracked intro (first in the flow, with the
-     * overview) and an untracked wrap-up (last) — both labels NONE (D25).
+     * The intro lives in SECTION 0 (pathway's native Overview), named and pinned
+     * in the sidebar, with the wrap-up as the last numbered section — both labels
+     * untracked NONE (D25). No duplicate numbered "Introduction".
      *
      * @return void
      */
@@ -550,21 +551,30 @@ final class materializer_test extends \advanced_testcase {
             ->materialize($job));
         $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
 
-        // Numbered sections in order: Introduction, the content section, Wrap-up.
+        // The intro is section 0, named, untracked, and pinned in the sidebar.
+        $section0 = $DB->get_record('course_sections', ['course' => $courseid, 'section' => 0], '*', MUST_EXIST);
+        $this->assertSame(get_string('introsection_name', 'local_coursegen'), $section0->name);
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->section_label_completion($courseid, (int) $section0->id));
+        $this->assertEquals(
+            '1',
+            course_get_format($courseid)->get_format_options()['pathwayshowsection0']
+        );
+
+        // Numbered sections (section > 0): the content section, then Wrap-up — and
+        // NO numbered "Introduction" (that was the P19 duplicate of section 0).
         $sections = array_values($DB->get_records_select(
             'course_sections',
             'course = :course AND section > 0',
             ['course' => $courseid],
             'section ASC'
         ));
-        $this->assertCount(3, $sections);
-        $this->assertSame(get_string('introsection_name', 'local_coursegen'), $sections[0]->name);
-        $this->assertSame('Widgets', $sections[1]->name);
-        $this->assertSame(get_string('finalsection_name', 'local_coursegen'), $sections[2]->name);
+        $this->assertCount(2, $sections);
+        $this->assertSame('Widgets', $sections[0]->name);
+        $this->assertSame(get_string('finalsection_name', 'local_coursegen'), $sections[1]->name);
+        $this->assertNotSame(get_string('introsection_name', 'local_coursegen'), $sections[0]->name);
 
-        // Both bookend labels are untracked; the intro carries the overview list.
-        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->section_label_completion($courseid, (int) $sections[0]->id));
-        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->section_label_completion($courseid, (int) $sections[2]->id));
+        // The wrap-up label is untracked; the intro (section 0) carries the overview list.
+        $this->assertEquals(COMPLETION_TRACKING_NONE, $this->section_label_completion($courseid, (int) $sections[1]->id));
         $this->assertTrue($DB->record_exists_select(
             'label',
             'course = :c AND ' . $DB->sql_like('intro', ':covers'),
@@ -573,12 +583,12 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
-     * Despite the front-shift from the intro section, an assessed content section
-     * builds its activity in the correct (offset) section (D25).
+     * With the intro in section 0 (no front-shift), an assessed content section
+     * builds its activity in the correct, un-shifted section (D25).
      *
      * @return void
      */
-    public function test_assessment_lands_in_offset_section(): void {
+    public function test_assessment_lands_in_correct_section(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -593,11 +603,11 @@ final class materializer_test extends \advanced_testcase {
             ->materialize($job));
         $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
 
-        // Sections: 1 intro, 2 Reading, 3 Assessed, 4 wrap-up. The KC is in 3.
+        // Sections: 0 intro, 1 Reading, 2 Assessed, 3 wrap-up. The KC is in 2.
         $kc = $DB->get_record('knowledgecheck', ['course' => $courseid], '*', MUST_EXIST);
         $cm = get_coursemodule_from_instance('knowledgecheck', $kc->id);
         $section = $DB->get_record('course_sections', ['id' => $cm->section], '*', MUST_EXIST);
-        $this->assertSame(3, (int) $section->section, 'The knowledge check is in the wrong (mis-offset) section.');
+        $this->assertSame(2, (int) $section->section, 'The knowledge check is in the wrong section.');
         $this->assertSame('Assessed', $section->name);
     }
 

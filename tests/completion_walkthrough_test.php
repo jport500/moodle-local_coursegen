@@ -70,8 +70,8 @@ final class completion_walkthrough_test extends \advanced_testcase {
 
         $this->assertEquals(
             100,
-            \format_pathway\progress::get_course_progress_percentage($course, $learner->id),
-            'Completed knowledge check is not reflected in format_pathway progress.'
+            \core_completion\progress::get_course_progress_percentage($course, $learner->id),
+            'Completed knowledge check is not reflected in course progress.'
         );
     }
 

@@ -147,7 +147,7 @@ class materializer {
 
         $imagebudget = $this->remaining_image_budget();
 
-        // Introduction bookend: the first section in the flow, untracked (D25).
+        // Introduction bookend: section 0 (pathway's native Overview), untracked (D25).
         $this->build_intro_section($course, $coursecontext, $blueprint);
 
         foreach ($blueprint->get_sections() as $i => $section) {
@@ -333,11 +333,16 @@ class materializer {
     }
 
     /**
-     * Build the introduction bookend: the first section in the flow, holding a
-     * course overview derived (no extra AI call) from the editable course
-     * description plus a "what you'll cover" list of the content section titles.
-     * Its label is UNTRACKED (D25) — orientation, not a learning unit — so it is
-     * never part of the course-completion criteria.
+     * Build the introduction bookend in SECTION 0 — format_pathway's native
+     * "Overview" that a learner lands on first (D25, corrected). Holds a course
+     * overview derived (no extra AI call) from the editable course description
+     * plus a "what you'll cover" list of the content section titles. Names
+     * section 0, pins it in the sidebar via the pathwayshowsection0 format option
+     * (set explicitly so it renders the same on any tenant, regardless of the
+     * tenant default), and carries an UNTRACKED label — orientation, not a
+     * learning unit — so it is never part of the course-completion criteria. The
+     * earlier P19 approach added a NUMBERED "Introduction" on top of the native
+     * section-0 "Introduction", which rendered to learners as a duplicate.
      *
      * @param \stdClass $course The course.
      * @param \context $coursecontext The course context.
@@ -345,7 +350,17 @@ class materializer {
      * @return void
      */
     private function build_intro_section(\stdClass $course, \context $coursecontext, blueprint $blueprint): void {
-        $sectionnum = $this->add_named_section($course, get_string('introsection_name', 'local_coursegen'));
+        global $DB;
+
+        // Name section 0 and pin it in the pathway sidebar so the Introduction is
+        // a visible, returnable nav item (and renders the same on any tenant).
+        $section0 = $DB->get_record('course_sections', ['course' => $course->id, 'section' => 0], '*', MUST_EXIST);
+        course_update_section(
+            $course,
+            $section0,
+            (object) ['name' => get_string('introsection_name', 'local_coursegen')]
+        );
+        course_get_format($course)->update_course_format_options((object) ['pathwayshowsection0' => '1']);
 
         $html = '';
         if ($blueprint->get_description() !== '') {
@@ -362,7 +377,7 @@ class materializer {
             $html .= \html_writer::tag('ul', implode('', $items));
         }
 
-        $this->create_label($course, $sectionnum, $html, $this->new_draft_itemid(), COMPLETION_TRACKING_NONE);
+        $this->create_label($course, 0, $html, $this->new_draft_itemid(), COMPLETION_TRACKING_NONE);
     }
 
     /**

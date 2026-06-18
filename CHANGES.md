@@ -3,6 +3,28 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.16.1 — 2026-06-18 (Fix: intro bookend duplicated section 0)
+
+Corrects the P19 introduction bookend. It added a *numbered* "Introduction" section on
+the mistaken belief that format_pathway hides section 0 — but section 0 is the format's
+native "Overview" that a learner lands on first, so learners saw **two** "Introduction"
+sections. See DECISIONS D25 (amended).
+
+- `build_intro_section` now targets **section 0**: names it, builds the same untracked
+  overview label (course description + "what you'll cover" list) into it, and sets the
+  `pathwayshowsection0='1'` course-format option explicitly so the Introduction is pinned
+  in the sidebar on any tenant (the option doesn't gate whether section 0 renders — it
+  only controls placement).
+- The extra numbered section is gone, so content sections are now 1…N (no front-shift);
+  the wrap-up remains the last numbered section and assessment placement stays correct.
+- Completion model unchanged: the section-0 intro and the wrap-up stay untracked, so the
+  criteria remain exactly the content/assessment tracked activities.
+- IR schema / blueprint / prompt / review form unchanged.
+- Also updates a test that referenced the now-removed `format_pathway\progress` helper to
+  use core's `\core_completion\progress` (validated against format_pathway 1.0.2).
+- Learner-view check: an enrolled student's pathway sidebar shows one "Introduction"
+  (section 0), then the content sections, then "Wrap-up".
+
 ## v0.16.0 — 2026-06-17 (Phase 20: operator-controlled course depth)
 
 Two named, independent create-time controls let the operator steer the course instead of

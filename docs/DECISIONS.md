@@ -821,10 +821,13 @@ not an in-band materialize step.
 bookend sections and sets a generated course image. All three live in the materializer
 — no blueprint, AI-prompt, or review-form change.
 
-- **Introduction** — the first numbered section in the pathway flow (section 0 is hidden
-  by default in format_pathway). Its content is *derived* from the editable course
-  description plus a "what you'll cover" list of the content section titles — no extra AI
-  call; re-materialize picks up an edited description.
+- **Introduction** — **section 0**, format_pathway's native "Overview" that a learner
+  lands on first (NOT a numbered section — see the amendment below). It is named via
+  `course_update_section` and pinned in the sidebar by setting the `pathwayshowsection0='1'`
+  course-format option explicitly, so it renders the same on any tenant regardless of that
+  tenant's default. Its content is *derived* from the editable course description plus a
+  "what you'll cover" list of the content section titles — no extra AI call; re-materialize
+  picks up an edited description.
 - **Wrap-up** — the last section, a short boilerplate (lang-string) closing note. It gives
   the final content section a `<Next>` target (so its completion display refreshes on
   navigation) and an obvious home for an operator-added certificate. **The plugin builds
@@ -842,9 +845,9 @@ learning units, so they must not become completion criteria — otherwise P15's 
 tracked activities" would require "completing" the intro and the wrap-up, changing what
 finishing the course means. `configure_course_completion` selects `completion <> NONE`,
 so the criteria equal exactly the content/assessment tracked activities; the bookends
-contribute nothing. Because `add_named_section` appends and returns the real section
-number, inserting the intro first shifts content to sections 2…N+1 and the KC/quiz
-placement (which keys on the returned `sectionnum`) stays correct by construction.
+contribute nothing. The intro occupies section 0, so the content sections are 1…N (no
+shift) and the wrap-up is the last numbered section; the KC/quiz placement keys on the
+real `sectionnum` returned by `add_named_section`, so it stays correct by construction.
 
 **Why.** A generated course that opens cold on the first content unit and ends abruptly
 reads as a dump, not a course. An overview, a closing section, and a cover image make it
@@ -854,10 +857,22 @@ server-side, so completing the last unit only reflects after a navigation — th
 into the wrap-up provides it.
 
 **Rejected.** A dedicated AI-written overview (extra call, another thing to keep in sync —
-deriving from the description is free and stays editable); putting the intro in section 0
-(hidden by default in pathway); auto-adding a mod_coursecertificate (credentialing is the
-operator's/stack's job, D24 — the plugin only provides the home); generating the
-thumbnail regardless of the image opt-in (would force a cover even when images are off).
+deriving from the description is free and stays editable); auto-adding a
+mod_coursecertificate (credentialing is the operator's/stack's job, D24 — the plugin only
+provides the home); generating the thumbnail regardless of the image opt-in (would force a
+cover even when images are off).
+
+**Amended (P19 follow-up).** The original P19 build put the intro in a *numbered*
+"Introduction" section on the belief that "format_pathway hides section 0 by default."
+That was wrong: format_pathway treats section 0 as the native "Overview" a learner lands
+on first (`format.php` sets the section to 0 for non-editors), so the build produced TWO
+"Introduction" sections visible to learners. Fixed by putting the intro into section 0
+(named, with `pathwayshowsection0='1'` set explicitly so it's pinned in the sidebar on any
+tenant) and no longer creating the extra section. `pathwayshowsection0` does not gate
+whether section 0 renders — it only controls sidebar-pinned vs. shown-above-content — so
+the intro renders for any tenant either way; setting it explicitly just guarantees the
+pinned nav placement. Content sections are now 1…N (no front-shift); completion model and
+criteria are unchanged (the section-0 intro and the wrap-up stay untracked).
 
 **Revisit if.** Operators want the bookends configurable/optional, or a course-card image
 even when section images are off (a separate "course image" opt-in distinct from section
