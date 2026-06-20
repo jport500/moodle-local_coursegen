@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.17.1 — 2026-06-20 (Fix: review-gate section ordering)
+
+Adding a section in the review gate and saving with the Order field blank put it at the
+**top** of the course instead of the end. See DECISIONS D29.
+
+- A blank, non-numeric, or non-positive Order now means **"add at the end"**; a positive
+  Order **places** the section at that position. (Previously a blank Order cleaned to `0`
+  and sorted to the top.)
+- Ordering is an explicit, total comparator — no longer dependent on `usort` stability —
+  and positions normalize to a contiguous **1..N** on save (no `0`s, gaps, or duplicate-
+  order ambiguity on reopen).
+- **Collision rule:** on a tie for a position, the later form row (e.g. a newly added
+  section) wins the slot and the existing one shifts down — so "add a section, type 3"
+  makes it the 3rd section.
+- Help text added to the Order field; no IR/schema change (edit handler only).
+
 ## v0.17.0 — 2026-06-20 (Topic becomes a real steering directive)
 
 When a job has a topic, it now steers generation instead of being a weak hint. See

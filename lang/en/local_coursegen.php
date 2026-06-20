@@ -63,6 +63,7 @@ $string['field_mode'] = 'Generation mode';
 $string['field_objectives'] = 'Learning objectives (one per line)';
 $string['field_questioncount'] = 'Number of questions';
 $string['field_sectionorder'] = 'Order';
+$string['field_sectionorder_help'] = 'Leave blank to add the section at the end. Enter a number to place it at that position; the other sections shift down. Positions are renumbered 1, 2, 3… when you save.';
 $string['field_sectiontitle'] = 'Section title';
 $string['field_sources'] = 'Source files';
 $string['field_summary'] = 'Summary';

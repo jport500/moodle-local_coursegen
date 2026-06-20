@@ -25,13 +25,13 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026062000;
+$plugin->version = 2026062001;
 // Verified floor: only Moodle 5.2 (2026042000) on PHP 8.3 has been exercised. The
 // code uses no 5.2-only APIs, but the declared floor reflects what is actually
 // tested rather than an unverified 5.1/PHP 8.2 claim (see docs/DECISIONS D19).
 $plugin->requires = 2026042000;
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v0.17.0';
+$plugin->release = 'v0.17.1';
 $plugin->dependencies = [
     // Generated courses default to the format_pathway course format (DECISIONS D10).
     'format_pathway' => 2025021586,

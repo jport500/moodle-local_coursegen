@@ -1010,3 +1010,37 @@ it); moving COURSE DESIGN TARGETS above the source to sit adjacent (regresses D2
 **Revisit if.** The model over-weights the focus and starts inventing beyond the source
 (tighten the fidelity rule), or operators want multiple focus directives / a separate
 "must cover" list.
+
+## D29 — Review-gate section ordering: blank = end, normalize to 1..N, later-row wins ties
+
+**Decision.** In `blueprint::from_form_data`, the per-section **Order** field now behaves
+predictably: a blank, non-numeric, or non-positive value means **"add at the end"**; a
+positive value **places** the section at that position. Sorting is an **explicit, total
+comparator** — positioned rows (order >= 1) first, ascending by order; "end" rows after,
+in form order — so it does **not** rely on `usort` stability. Positions are contiguous
+**1..N** (sections persist positionally; the Order values are sort keys only, not stored;
+`edit.php` re-prefills `1..N` on reopen, so a reopened blueprint shows no `0`s, gaps, or
+duplicate-order ambiguity).
+
+**Why.** A blank Order cleaned to `0` (empty `PARAM_INT`), sorting newly added sections to
+the **top** — the reported bug — and the `?? ($i+1)` default was dead for present-but-empty
+fields. Collisions previously resolved by incidental `usort` stability.
+
+**Collision rule (explicit, documented).** On a tie for a position, the **later form row
+wins the slot** and the earlier one shifts down. New sections are appended at the highest
+form indices, so "add a section and type position N" places it at N and pushes the
+existing section there to N+1 — *without needing to distinguish new-vs-existing rows*,
+which the form data can't do cleanly (sections have no stable per-section id). For the
+rarer "edit an existing section's number into a collision" case, the lower-listed section
+yields — one consistent rule.
+
+**Scope.** Edit handler / `from_form_data` only — no IR/schema change (sections already
+persist positionally). A help string on the Order field documents the behaviour.
+
+**Rejected.** Detecting new-vs-existing rows via form index vs. original section count
+(fragile — couples the converter to the prefill convention); storing an explicit order
+field (unnecessary — positional); relying on `usort` stability for ties (incidental, not
+guaranteed semantics).
+
+**Revisit if.** Drag-and-drop reordering replaces the numeric field, or operators want a
+different collision rule.

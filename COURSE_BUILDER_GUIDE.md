@@ -135,6 +135,11 @@ section: its **Title**, **Order**, **Learning objectives**, **Summary**, whether
 to **generate an image** (and a hint for it), the **Assessment** type, and the
 **Number of questions**. You can **Add section** or **Delete this section**.
 
+**Ordering sections.** The **Order** field controls position. Leave it **blank to
+add a section at the end** (handy when you click *Add section*), or type a number
+to **place it at that position** — the others shift down, so typing `3` makes it
+the third section. Positions are tidied up to 1, 2, 3… when you save.
+
 **Regenerate a section.** Each section has a **Regenerate** button. If a section
 is off, you can rewrite it by hand, or tighten its summary/objectives and
 regenerate to get a fresh draft that follows your edits.

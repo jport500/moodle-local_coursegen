@@ -135,7 +135,10 @@ class edit_blueprint_form extends \moodleform {
 
         $repeatopts = [
             'sectiontitle' => ['type' => PARAM_TEXT],
-            'sectionorder' => ['type' => PARAM_INT],
+            'sectionorder' => [
+                'type' => PARAM_INT,
+                'helpbutton' => ['field_sectionorder', 'local_coursegen'],
+            ],
             'sectionobjectives' => ['type' => PARAM_TEXT],
             'sectionsummary' => ['type' => PARAM_TEXT],
             'sectionimagehint' => ['type' => PARAM_TEXT],

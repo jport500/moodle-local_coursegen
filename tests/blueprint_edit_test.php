@@ -71,6 +71,78 @@ final class blueprint_edit_test extends \advanced_testcase {
     }
 
     /**
+     * A blank Order (a newly added section) lands at the END, not the top (D29).
+     *
+     * @return void
+     */
+    public function test_blank_order_lands_last(): void {
+        $bp = blueprint::from_form_data($this->order_data(['A', 'B', 'C', 'New'], [1, 2, 3, '']));
+        $this->assertSame(['A', 'B', 'C', 'New'], $this->section_titles($bp));
+    }
+
+    /**
+     * Mixed positioned + blank rows resolve to a contiguous sequence: positioned
+     * rows by their number, blank rows appended in form order (D29).
+     *
+     * @return void
+     */
+    public function test_order_fills_gaps_and_is_contiguous(): void {
+        // X=3 (placed), Y=blank (end), Z=1 (placed) -> Z, X, Y at positions 1,2,3.
+        $bp = blueprint::from_form_data($this->order_data(['X', 'Y', 'Z'], [3, '', 1]));
+        $this->assertSame(['Z', 'X', 'Y'], $this->section_titles($bp));
+        $this->assertSame(3, $bp->section_count());
+    }
+
+    /**
+     * Reordering existing sections by editing their (unique) numbers produces the
+     * expected sequence (D29).
+     *
+     * @return void
+     */
+    public function test_reorder_existing_by_editing_numbers(): void {
+        $bp = blueprint::from_form_data($this->order_data(['A', 'B', 'C'], [3, 1, 2]));
+        $this->assertSame(['B', 'C', 'A'], $this->section_titles($bp));
+    }
+
+    /**
+     * Collision rule (D29): a later form row (e.g. a newly added section) set to an
+     * occupied position takes that slot; the existing section there shifts down.
+     *
+     * @return void
+     */
+    public function test_collision_later_form_row_wins_the_slot(): void {
+        // The 'New' row (last) is set to 3 with 'C' already at 3 -> New at 3, C at 4.
+        $bp = blueprint::from_form_data($this->order_data(['A', 'B', 'C', 'New'], [1, 2, 3, 3]));
+        $this->assertSame(['A', 'B', 'New', 'C'], $this->section_titles($bp));
+    }
+
+    /**
+     * Build edit-form data from parallel title/order arrays (other fields default).
+     *
+     * @param string[] $titles Section titles.
+     * @param array $orders Per-section Order values ('' for a blank field).
+     * @return \stdClass
+     */
+    private function order_data(array $titles, array $orders): \stdClass {
+        return (object) [
+            'title' => 'Course',
+            'description' => 'Desc',
+            'sectiontitle' => $titles,
+            'sectionorder' => $orders,
+        ];
+    }
+
+    /**
+     * The ordered section titles of a blueprint.
+     *
+     * @param blueprint $blueprint The blueprint.
+     * @return string[]
+     */
+    private function section_titles(blueprint $blueprint): array {
+        return array_map(static fn(array $s): string => $s['title'], $blueprint->get_sections());
+    }
+
+    /**
      * The estimate is derived from the plan (sections + flagged images).
      *
      * @return void

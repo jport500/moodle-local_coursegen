@@ -302,8 +302,13 @@ class blueprint {
     }
 
     /**
-     * Build a blueprint from submitted edit-form data. Sections are ordered by
-     * their per-section order field; blank-titled rows (removed) are dropped.
+     * Build a blueprint from submitted edit-form data; blank-titled rows (removed)
+     * are dropped. Sections are ordered by their per-section Order field (D29): a
+     * row with Order >= 1 is placed at that position; a blank, non-numeric, or
+     * non-positive Order means "add at the end". A tie on a position is won by the
+     * later form row, so a newly added section claims the slot and the existing one
+     * shifts down. The resulting positions are contiguous 1..N (sections persist
+     * positionally; the Order values are sort keys only, not stored).
      *
      * @param \stdClass $data The moodleform data (repeat_elements arrays).
      * @return self
@@ -327,8 +332,10 @@ class blueprint {
             if (trim((string) $title) === '') {
                 continue;
             }
+            // A blank, non-numeric, or non-positive Order means "add at the end".
             $rows[] = [
-                'order' => (int) ($orders[$i] ?? ($i + 1)),
+                'order' => (int) ($orders[$i] ?? 0),
+                'index' => (int) $i,
                 'section' => [
                     'title' => (string) $title,
                     'objectives' => preg_split('/\R/', (string) ($objectives[$i] ?? '')),
@@ -344,7 +351,24 @@ class blueprint {
                 ],
             ];
         }
-        usort($rows, static fn(array $a, array $b): int => $a['order'] <=> $b['order']);
+        // Positioned rows (order >= 1) first, ascending by order; "end" rows
+        // (order <= 0) after, in form order. A tie on a position goes to the later
+        // form row (index descending), so a newly added section claims the slot.
+        // Explicit and total — no reliance on usort stability.
+        usort($rows, static function (array $a, array $b): int {
+            $aend = $a['order'] <= 0;
+            $bend = $b['order'] <= 0;
+            if ($aend !== $bend) {
+                return $aend <=> $bend;
+            }
+            if ($aend) {
+                return $a['index'] <=> $b['index'];
+            }
+            if ($a['order'] !== $b['order']) {
+                return $a['order'] <=> $b['order'];
+            }
+            return $b['index'] <=> $a['index'];
+        });
         foreach ($rows as $row) {
             $blueprint->add_section($row['section']);
         }
