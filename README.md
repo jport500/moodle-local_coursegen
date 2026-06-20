@@ -2,8 +2,8 @@
 
 LMS Light's AI course builder. Generates native Moodle courses from uploaded
 materials or a topic prompt, composing the existing stack
-(`format_pathway`, `local_quizgenpro`, and optionally `tool_muprog` /
-`tool_mucertify`). Every AI call routes through Moodle's AI Providers
+(`format_pathway`, `local_quizgenpro`, and `mod_knowledgecheck` /
+`filter_knowledgecheck`). Every AI call routes through Moodle's AI Providers
 subsystem — the plugin never talks to an LLM vendor directly.
 
 The design and the reasoning behind it live in [`docs/SPEC.md`](docs/SPEC.md)
@@ -13,16 +13,22 @@ first for the product and deployment model.
 
 ## Status
 
-**Phase 0 — scaffolding.** Plugin skeleton, capabilities, admin settings,
-database schema, and privacy provider are in place. Ingestion, generation,
-and the pipeline are not yet implemented (P1 onward — see SPEC §11).
+**Beta (v0.16.2).** The full pipeline is implemented: source ingestion and
+extraction, blueprint generation, the review gate with per-section
+regeneration, materialization into a hidden format_pathway course (intro +
+wrap-up bookends, per-section reading, optional images, a course thumbnail),
+assessments (inline knowledge checks and graded quizzes), and
+completion-to-criteria wiring. Operators steer each run with audience-level and
+length/depth controls. See [CHANGES.md](CHANGES.md) for the per-phase history.
 
 ## Requirements
 
-- Moodle 5.1 or later (`requires = 2025092600`).
-- `format_pathway` and `local_quizgenpro` installed.
-- At least one provider configured in the AI Providers subsystem.
-- Optional: `tool_muprog` / `tool_mucertify` to enable the wrap toggles.
+- Moodle 5.2 or later (`requires = 2026042000`; verified floor — see
+  DECISIONS D19).
+- `format_pathway`, `local_quizgenpro`, and
+  `mod_knowledgecheck` + `filter_knowledgecheck` installed.
+- At least one provider configured in the AI Providers subsystem (a text
+  provider is required; an image provider is needed for section images).
 
 ## Installation
 
@@ -43,8 +49,10 @@ isolation:
   image sub-cap.
 - **Mode** — default generation mode (outline-first / automatic), an
   optional lock, and the per-section image opt-in default.
-- **Composition** — optional toggles to wrap generated courses in a
-  `tool_muprog` program or `tool_mucertify` certification.
+- **Course depth** — default audience level (beginner / intermediate /
+  advanced) and default length/depth (brief / standard / comprehensive); the
+  create form pre-selects these and the operator can change them per run
+  (DECISIONS D26).
 
 ## Capabilities
 
@@ -56,7 +64,7 @@ isolation:
 
 The plugin stores who generated what, the source material supplied, the
 editable blueprint, and a per-stage audit log. A full GDPR privacy provider
-(export + delete) ships from v1. Credential values are never stored.
+(export + delete) is implemented. Credential values are never stored.
 
 ## License
 

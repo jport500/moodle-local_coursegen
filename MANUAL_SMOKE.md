@@ -95,8 +95,20 @@ php local/coursegen/cli/materialize.php --jobid=<id>
 
 Open the new course.
 
+- [ ] **Structure (D25):** one **"Introduction"** overview in **section 0**
+  (format_pathway's native Overview — a learner lands on it first; it's also
+  pinned in the sidebar), then one section per blueprint section, then a
+  **"Wrap-up"** section last. There must be exactly **one** "Introduction" — a
+  second, numbered "Introduction" would be the pre-fix duplicate.
 - [ ] One section per blueprint section, each with inline reading text (a "Text
   and media" area) and, where opted in, an inline image with alt text.
+- [ ] **Depth controls (D26):** the section count and reading register reflect
+  the chosen length/depth and audience level — compare a Brief+Beginner run with
+  a Comprehensive+Advanced run from the same source (see §1).
+- [ ] **Order within a section (D27):** the reading comes first and the
+  assessment activity sits **last** — read, then assess. (For a stealth inline
+  knowledge check this is inherent; check it for a graded quiz or a non-stealth
+  knowledge check.)
 - [ ] Assessed sections render an **inline knowledge check in the reading flow**
   (not a separate activity link) — this is filter_knowledgecheck expanding the
   `{knowledgecheck id=…}` token. If you instead see a visible "Knowledge check"

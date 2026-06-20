@@ -1,14 +1,16 @@
-# local_coursegen — Design Spec (v1.0, for review)
+# local_coursegen — Design Spec (as-built, v0.16.2)
 
 AI course-builder for LMS Light. Generates real Moodle courses from
 uploaded materials or a topic prompt, composing the existing plugin stack.
-This is a point-in-time design document; decisions and their rationale live
-in `docs/DECISIONS.md`. Read
+This spec has been reconciled to the shipped plugin (through P20); the
+decisions and their rationale — including the changes that superseded the
+original v1.0 design — live in `docs/DECISIONS.md`, and the per-phase history
+is in `CHANGES.md`. Read
 `github.com/jport500/lms-light-docs/blob/main/CONTEXT.md` first.
 
-Status: **draft for review.** Items marked *(verify)* must be checked
-against the actual Moodle 5.1 codebase before implementation, per the
-spec-verification rule.
+Status: **as-built.** Verified against Moodle 5.2 (the exercised floor,
+`requires = 2026042000`; see DECISIONS D19). Where this spec and DECISIONS
+disagree, DECISIONS is authoritative.
 
 ---
 
@@ -19,19 +21,28 @@ their own source material (or a topic) in minutes, reviewing or skipping a
 human checkpoint, with the output landing as a native, hidden/draft course
 that composes with format_pathway, quizgenpro, and the gradebook.
 
-### In scope (v1)
+### In scope (built)
 - Source ingestion: PDF, DOCX, PPTX, pasted text/markdown, topic-only prompt
 - Blueprint generation (editable, persisted) → review gate → materialization
-- Output content: learning objectives, structured reading (page/book),
-  flashcards, AI-generated images (diagrams/illustrations) with alt text
-- Assessments via local_quizgenpro's public API
+- Output content: learning objectives, structured reading as inline "Text and
+  media" areas (D12), AI-generated images (diagrams/illustrations) with alt text
+- Operator-controlled course depth: audience level (beginner / intermediate /
+  advanced) and length/depth (brief / standard / comprehensive) at create time
+  (D26)
+- Course structure: intro + wrap-up bookends and a generated course thumbnail
+  (D25)
+- Assessments via local_quizgenpro's public API — inline formative knowledge
+  checks (mod_knowledgecheck) and summative graded quizzes (mod_quiz) (D15, D23)
 - Two generation modes (outline-first / automatic), draft-by-default
 - Per-tenant provider mapping (capability tiers) via AI Providers
 - Per-tenant cost estimate, quota/cap, and audit log
-- Optional toggle: wrap result in tool_muprog / tool_mucertify
+- Course-completion criteria wired from the tracked activities (D22)
 
-### Out of scope (v1) — fast-follows
-- Audio/podcast (TTS), video, comics, music, games, real-time AI tutor
+### Out of scope — fast-follows
+- Flashcards (deferred — D12); audio/podcast (TTS), video, comics, music,
+  games, real-time AI tutor
+- Credentialing: wrapping the course in tool_muprog / tool_mucertify — removed
+  as out of scope for a course builder (D24)
 - Vector RAG / per-tenant embeddings store
 - Audio/video transcription, URL scraping as sources
 - Distribution via enrol_lti (parked; see DECISIONS D9)
@@ -57,13 +68,16 @@ ingest → extract → blueprint → [REVIEW GATE] → materialize → assess �
    Map-reduce over the corpus when it exceeds context.
 4. **Review gate** — outline-first: instructor edits/approves the blueprint.
    Automatic: skip. Cost estimate shown here either way.
-5. **Materialize** — create the hidden course in format_pathway; for each
-   section, `drafting` tier generates reading content; `image` capability
-   generates flagged visuals; flashcards generated.
-6. **Assess** — call local_quizgenpro's API to generate quizzes/questions
-   per the blueprint's assessment spec.
-7. **Finalize** — assemble completion settings; optionally wrap in
-   muprog/mucertify; leave the course hidden/draft for instructor publish.
+5. **Materialize** — create the hidden course in format_pathway; put the intro
+   overview in section 0 and a wrap-up bookend last (D25); for each content
+   section, `drafting` tier generates reading content (pitched to the audience
+   level, D26) and `image` capability generates flagged visuals; assessments are
+   placed after the reading (D27). A course thumbnail is generated when images
+   are opted in.
+6. **Assess** — via local_quizgenpro's API, generate questions for the section's
+   assessment: an inline knowledge check (D15) or a graded quiz (D23).
+7. **Finalize** — configure course-completion criteria from the tracked
+   activities (D22); leave the course hidden/draft for instructor publish.
 
 All AI calls route through the AI Providers subsystem (§5). Long-running
 stages run as adhoc tasks with progress surfaced to the instructor; no
@@ -76,9 +90,9 @@ generation blocks a web request.
 Plugin-owned tables (names indicative):
 
 - **`coursegen_job`** — one per generation run: requesting user, target
-  course id (once created), mode, status (`extracting`/`blueprinted`/
-  `awaiting_review`/`materializing`/`assessing`/`complete`/`failed`),
-  timestamps, estimated and actual spend.
+  course id (once created), mode, audience level + length/depth (D26), status
+  (`extracting`/`blueprinted`/`awaiting_review`/`materializing`/`assessing`/
+  `complete`/`failed`), timestamps, estimated and actual spend.
 - **`coursegen_source`** — uploaded source references (File API item ids)
   and extracted-corpus metadata per job.
 - **`coursegen_blueprint`** — the IR: serialized plan for a job (course
@@ -92,7 +106,8 @@ Plugin-owned tables (names indicative):
 Config stored via Moodle's standard plugin config (`set_config`) for
 automatic per-tenant isolation: capability-tier → provider mappings (or
 deferral to AI Providers defaults), generation caps and thresholds,
-default mode + lock, image opt-in defaults, muprog/mucertify toggle.
+default mode + lock, image opt-in default, and default audience level +
+length/depth (D26).
 
 ---
 
@@ -117,23 +132,22 @@ default mode + lock, image opt-in defaults, muprog/mucertify toggle.
 
 ## 5. AI integration
 
-- All calls go through Moodle's AI Providers subsystem. *(verify the exact
-  `core_ai` action names and the availability of an image-generation action
-  in 5.1.)*
+- All calls go through Moodle's AI Providers subsystem (`core_ai`); the
+  resolved provider/model is read back from the subsystem and logged (§10.2).
 - **Capability tiers** declared by the plugin, mapped to providers per
   tenant:
-  - `reasoning` — blueprint generation (low volume, high leverage).
+  - `reasoning` — blueprint generation (low volume, high leverage). The
+    operator's audience/length targets are woven into this prompt (D26).
   - `drafting` — bulk per-section reading content (higher volume,
-    cost-sensitive).
+    cost-sensitive). The audience level pitches this prose (D26).
   - `image` — diagram/illustration generation.
 - **Defaults:** ship sensible tier→provider defaults; admins override per
   tenant for cost or data residency. The plugin never hardcodes a vendor.
-- **Quizzes:** delegated to `local_quizgenpro`'s public API *(verify the
-  current API surface and version)*; quizgenpro uses its own provider
-  config. No quiz logic duplicated here.
+- **Quizzes:** delegated to `local_quizgenpro`'s public API; quizgenpro uses
+  its own provider config. No quiz logic duplicated here.
 - **Images:** generated via the image capability, stored through the File
-  API (per-tenant moodledata partitioning), embedded into page/book HTML;
-  alt text generated alongside each image for accessibility.
+  API (per-tenant moodledata partitioning), embedded into the section's inline
+  label HTML; alt text generated alongside each image for accessibility.
 
 ---
 
@@ -149,6 +163,10 @@ default mode + lock, image opt-in defaults, muprog/mucertify toggle.
   not visible to learners, in both modes. Publishing is an explicit
   instructor action.
 - Mode is a per-tenant default with per-run override; admins can lock it.
+- **Course depth (D26):** two create-time controls — audience level and
+  length/depth — set on the create form (pre-filled from the per-tenant
+  defaults). They shape the initial blueprint and any per-section regeneration;
+  changing them after generation is out of scope for v1.
 
 ---
 
@@ -183,50 +201,55 @@ default mode + lock, image opt-in defaults, muprog/mucertify toggle.
 
 ## 9. Composition with the stack
 
-- **format_pathway** — default course format for generated courses; the
+- **format_pathway** — default course format for generated courses (D10); the
+  intro overview lives in its native section 0 (D25, amended). The
   self-contained linear layout also embeds cleanly if D9 is ever pursued.
-- **local_quizgenpro** — assessments (§5).
-- **tool_muprog / tool_mucertify** — optional finalize step to wrap the
-  generated course into a program / certification; off by default.
-- **mod_page / mod_book (or mod_mubook)** — reading content targets
-  *(verify which book module is preferred in the deployment)*.
+- **local_quizgenpro** — question generation for both assessment types (§5).
+- **mod_knowledgecheck / filter_knowledgecheck** — inline formative checks
+  (D15); **mod_quiz** — summative graded quizzes (D23). **mod_label** — the
+  inline reading "Text and media" areas (D12).
+- **Credentialing (tool_muprog / tool_mucertify)** — out of scope; the wrap was
+  removed in P18 (D24). The plugin builds a completable course and a wrap-up
+  section as a home for an operator-added certificate, but creates no
+  certificate and takes no dependency on those tools.
 
 ---
 
-## 10. To verify before build (spec-verification)
+## 10. Verification (resolved during implementation)
 
-1. Moodle 5.1 course/section/module creation APIs and signatures — do not
-   assume; grep the codebase.
-2. `core_ai` action names and whether an image-generation action is exposed
-   in 5.1; how the resolved provider/model is reported for logging.
-3. `local_quizgenpro` current public API and version compatibility.
-4. Whether Moodle core bundles PDF/DOCX/PPTX text extraction usable here,
-   to avoid duplicate dependencies.
-5. format_pathway course-creation hooks and any required course settings.
-6. Adhoc task behaviour and progress reporting inside a tool_mutenancy
-   tenant context.
-7. (For D9, later) LTI 1.3 provider maturity of enrol_lti in 5.1.
+The original spec-verification checklist has been resolved against the
+Moodle 5.2 codebase over P1–P20. Notable outcomes recorded in DECISIONS:
+
+1. Course/section/module creation APIs verified per phase (e.g. the
+   `add_moduleinfo` field matrix, `course_create_section`, and — D27 — the 5.2
+   `core_courseformat\local\cmactions` replacing the deprecated `moveto_module`).
+2. `core_ai` actions and the resolved-provider/model readback are used for the
+   §10.2 audit log; the image action is exposed and used for visuals/thumbnail.
+3. `local_quizgenpro`'s public API drives both knowledge checks and quizzes.
+4. Source extraction uses vendored libraries (`smalot/pdfparser`, PHPOffice) in
+   `vendor/`, excluded from the phpcs gate.
+5. format_pathway specifics verified, including the section-0 "Overview"
+   behaviour and the `pathwayshowsection0` option (D25, amended).
+6. Adhoc-task progress is surfaced on the job page (self-refreshing).
+7. (For D9, later) enrol_lti LTI 1.3 maturity — still parked.
 
 ---
 
-## 11. Proposed phasing
+## 11. Phasing (as-built)
 
-Each phase lands in its own commit with phase-boundary quality gates
+Each phase landed in its own commit with phase-boundary quality gates
 (phpcs moodle-clean, PHPUnit green, real-transport verification where
-applicable), per the LMS Light working process.
+applicable), per the LMS Light working process. The original P0–P7 proposal
+was delivered and then extended well beyond it (through P20). `CHANGES.md` is
+the authoritative per-phase history; in brief:
 
-- **P0 — Skeleton & scaffolding.** Plugin structure, capabilities,
-  settings (tier mappings, caps, mode), DB schema, privacy provider stub.
-- **P1 — Ingestion & extraction.** Uploads, source corpus, async extract,
-  limits. CLI/test fixtures for each file type.
-- **P2 — Blueprint generation.** `reasoning`-tier blueprint, map-reduce,
-  persisted editable IR, cost estimate.
-- **P3 — Review gate & UI.** Outline-first editing, approval,
-  per-section regeneration; mode handling.
-- **P4 — Materialization.** Draft format_pathway course, `drafting`-tier
-  reading content, flashcards, image generation + alt text + File API.
-- **P5 — Assessments.** quizgenpro integration per the assessment spec.
-- **P6 — Finalize & governance.** Quota enforcement, audit completeness,
-  optional muprog/mucertify wrap, MANUAL_SMOKE.md.
-- **P7 — Hardening.** Real-transport verification of provider calls,
-  failure/resume paths, docs (README, CHANGES), release tag.
+- **P0–P7** — skeleton, ingestion/extraction, blueprint generation, review
+  gate + UI, materialization, assessments, finalize/governance, hardening.
+- **P13–P16** — wayfinding polish; assessment-model coherence; the
+  completion→certificate wiring and cert-wrap allocation source.
+- **P17** — real graded quiz (summative, pass-to-complete; D23).
+- **P18** — removed the cert/program wrap; credentialing is out of scope (D24).
+- **P19** — course-structure enrichment: intro + wrap-up bookends and a course
+  thumbnail (D25; the intro was later corrected to live in section 0).
+- **P20** — operator-controlled course depth (audience level + length/depth;
+  D26), plus the read-then-assess section ordering (D27).
