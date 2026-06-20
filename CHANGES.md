@@ -3,6 +3,28 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.17.0 — 2026-06-20 (Topic becomes a real steering directive)
+
+When a job has a topic, it now steers generation instead of being a weak hint. See
+DECISIONS D28.
+
+- The topic is injected into the synthesis prompt as a labeled **COURSE FOCUS**
+  directive — ahead of and separate from SOURCE MATERIAL — rather than riding into the
+  corpus as undifferentiated trailing source text. It's read from its `type='topic'`
+  source separately from the documents and injected at final synthesis, so it survives
+  intact regardless of corpus size and is never folded into the map-reduced corpus.
+- **Fidelity-safe:** the directive steers scope, emphasis, and framing but instructs the
+  model to draw substantive content from the source material, not invent beyond it — the
+  topic decides what the course is about; the documents stay the authority for what it
+  says.
+- The two operator-intent directives now bracket the source: COURSE FOCUS leads, COURSE
+  DESIGN TARGETS (depth/level, D26) stays after for recency.
+- **Topic-only is unchanged in effect:** with no documents the directive carries the
+  build and the model develops content from the focus plus general knowledge.
+- Real-transport smoke: the same water-cycle source yielded a broad "Understanding the
+  Water Cycle" with no topic, but a narrowed "Evaporation Fundamentals for Facilities
+  Staff" with a focus topic; topic-only still built a full course.
+
 ## v0.16.2 — 2026-06-18 (Fix: assessment placed last within its section)
 
 The reading now comes first in a content section and the assessment activity (knowledge

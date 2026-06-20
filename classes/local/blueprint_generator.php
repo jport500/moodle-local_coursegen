@@ -26,6 +26,7 @@ namespace local_coursegen\local;
 
 use local_coursegen\local\ai\text_client;
 use local_coursegen\local\ai\text_result;
+use local_coursegen\local\extractor\factory;
 
 /**
  * Stage 3 of the pipeline (SPEC §2): turns the normalized corpus into the
@@ -75,16 +76,21 @@ class blueprint_generator {
             return false;
         }
 
-        [$blocks, $tokens] = $this->gather_corpus($job);
-        if ($blocks === []) {
+        [$blocks, $tokens, $topictext] = $this->gather_corpus($job);
+        if ($blocks === [] && $topictext === '') {
             $this->fail_job($job, $context, 'empty corpus');
             return false;
         }
 
         $budget = $this->budget_tokens();
-        if ($tokens <= $budget) {
+        if ($blocks === []) {
+            // Topic-only: no source documents — the topic directive carries the
+            // build, with SOURCE MATERIAL left empty (D28).
+            $sourcetext = '';
+        } else if ($tokens <= $budget) {
             $sourcetext = $this->render_blocks($blocks);
         } else {
+            // Only the document corpus is map-reduced; the topic is never folded in.
             $sourcetext = $this->map_reduce($blocks, $budget, $job, $context);
             if ($sourcetext === null) {
                 // The map-reduce step already failed the job.
@@ -93,7 +99,12 @@ class blueprint_generator {
         }
 
         $fragment = course_depth::prompt_fragment($job->audiencelevel ?? null, $job->depth ?? null);
-        $result = $this->call_and_log($this->blueprint_prompt($sourcetext, $fragment), $job, $context, 'synthesis');
+        $result = $this->call_and_log(
+            $this->blueprint_prompt($sourcetext, $fragment, $topictext),
+            $job,
+            $context,
+            'synthesis'
+        );
         if (!$result->success) {
             $this->set_status($job, job_manager::STATUS_FAILED);
             return false;
@@ -112,7 +123,7 @@ class blueprint_generator {
 
         // Best-effort length enforcement: one bounded re-prompt if the section
         // count missed the operator's depth range (D26 Fix 1).
-        $blueprint = $this->enforce_section_count($blueprint, $sourcetext, $fragment, $job, $context);
+        $blueprint = $this->enforce_section_count($blueprint, $sourcetext, $fragment, $topictext, $job, $context);
 
         blueprint_store::save_new_version($job, $blueprint, (int) $job->userid);
         $DB->set_field('coursegen_job', 'estimatedspend', $blueprint->estimate_units(), ['id' => $job->id]);
@@ -121,25 +132,35 @@ class blueprint_generator {
     }
 
     /**
-     * Merge all extracted source blocks for the job, in order.
+     * Split the job's sources into the document corpus and the operator topic.
+     * The topic (a `type='topic'` source) is steered as a labeled directive at
+     * synthesis (D28), NOT merged into the document blocks — so it never rides
+     * into SOURCE MATERIAL and is never folded into the map-reduced corpus.
      *
      * @param \stdClass $job The job.
-     * @return array{0:array[],1:int} The ordered blocks and their token estimate.
+     * @return array{0:array[],1:int,2:string} Document blocks, their token
+     *         estimate, and the topic text ('' when there is no topic source).
      */
     private function gather_corpus(\stdClass $job): array {
         global $DB;
         $blocks = [];
+        $topictext = '';
         $sources = $DB->get_records('coursegen_source', ['jobid' => $job->id], 'id ASC');
         foreach ($sources as $source) {
             if ($source->corpus === null) {
                 continue;
             }
-            foreach (corpus::from_json($source->corpus)->get_blocks() as $block) {
+            $corpus = corpus::from_json($source->corpus);
+            if ($source->type === factory::TYPE_TOPIC) {
+                $topictext = trim($this->render_blocks($corpus->get_blocks()));
+                continue;
+            }
+            foreach ($corpus->get_blocks() as $block) {
                 $blocks[] = $block;
             }
         }
         $tokens = (int) ceil(\core_text::strlen($this->render_blocks($blocks)) / 4);
-        return [$blocks, $tokens];
+        return [$blocks, $tokens, $topictext];
     }
 
     /**
@@ -298,6 +319,7 @@ class blueprint_generator {
      * @param blueprint $blueprint The parsed, valid blueprint.
      * @param string $sourcetext The corpus (or reduced summaries).
      * @param string $depthfragment The depth/level design targets.
+     * @param string $topic The operator focus directive (D28); '' when none.
      * @param \stdClass $job The job.
      * @param \context $context The job context.
      * @return blueprint The original or the corrected blueprint.
@@ -306,6 +328,7 @@ class blueprint_generator {
         blueprint $blueprint,
         string $sourcetext,
         string $depthfragment,
+        string $topic,
         \stdClass $job,
         \context $context
     ): blueprint {
@@ -333,7 +356,7 @@ class blueprint_generator {
             . "range. Produce a revised outline of the SAME course with approximately {$min}-{$max} "
             . "sections (no fewer than {$min}, no more than {$max}), splitting or merging topics to fit.";
         $result = $this->call_and_log(
-            $this->blueprint_prompt($sourcetext, $depthfragment, $note),
+            $this->blueprint_prompt($sourcetext, $depthfragment, $topic, $note),
             $job,
             $context,
             "recount sections ({$count} -> {$min}-{$max})"
@@ -352,17 +375,47 @@ class blueprint_generator {
     /**
      * Build the synthesis prompt that asks for the blueprint as strict JSON.
      *
-     * @param string $sourcetext The corpus (or reduced summaries).
+     * The operator-intent directives bracket the source: the COURSE FOCUS (the
+     * job topic, D28) leads, ahead of and separate from SOURCE MATERIAL, and the
+     * COURSE DESIGN TARGETS (depth/level, D26) follow it for recency. The topic
+     * is injected here at synthesis, so it survives intact regardless of corpus
+     * size and is never folded into the map-reduced document corpus.
+     *
+     * @param string $sourcetext The document corpus (or reduced summaries); '' when topic-only.
      * @param string $depthfragment The operator depth/level design targets (D26).
+     * @param string|null $topic The operator focus directive (D28); null/'' when none.
      * @param string|null $recountnote An optional correction appended last when a
      *      prior attempt missed the section-count range (D26 Fix 1).
      * @return string
      */
-    private function blueprint_prompt(string $sourcetext, string $depthfragment, ?string $recountnote = null): string {
+    private function blueprint_prompt(
+        string $sourcetext,
+        string $depthfragment,
+        ?string $topic = null,
+        ?string $recountnote = null
+    ): string {
+        $hassource = trim($sourcetext) !== '';
+        $hastopic = $topic !== null && trim($topic) !== '';
+
+        $focus = '';
+        if ($hastopic) {
+            $rule = $hassource
+                ? 'Build the course to address this intent — use it to decide scope, emphasis, and '
+                    . 'framing — but draw all substantive content from the SOURCE MATERIAL below, not '
+                    . 'from outside it.'
+                : 'Build the course to address this intent. No source documents were provided, so '
+                    . 'develop the content from this focus and general knowledge of the subject.';
+            $focus = "\n\nCOURSE FOCUS:\n{$topic}\n{$rule}";
+        }
+
+        $source = $hassource
+            ? "\n\nSOURCE MATERIAL:\n{$sourcetext}"
+            : "\n\nSOURCE MATERIAL:\n(No source documents were provided.)";
+
         $prompt = <<<PROMPT
-You are an instructional designer. From the SOURCE MATERIAL below, design a
-structured online course. Respond with ONLY a JSON object (no prose, no code
-fences) of exactly this shape:
+You are an instructional designer. Design a structured online course as specified
+below. Respond with ONLY a JSON object (no prose, no code fences) of exactly this
+shape:
 
 {
   "title": "course title",
@@ -379,12 +432,8 @@ fences) of exactly this shape:
 }
 
 Produce a coherent ordering even if the source is unstructured.
-
-SOURCE MATERIAL:
-{$sourcetext}
-
-{$depthfragment}
 PROMPT;
+        $prompt .= $focus . $source . "\n\n" . $depthfragment;
         if ($recountnote !== null) {
             $prompt .= "\n\n" . $recountnote;
         }

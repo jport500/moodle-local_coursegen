@@ -381,6 +381,86 @@ final class blueprint_generator_test extends \advanced_testcase {
     }
 
     /**
+     * Topic + documents (D28): the topic becomes a labeled COURSE FOCUS directive,
+     * ahead of and separate from SOURCE MATERIAL — not buried in the corpus. The
+     * documents are the SOURCE MATERIAL.
+     *
+     * @return void
+     */
+    public function test_topic_is_a_labeled_directive_not_source_material(): void {
+        $this->resetAfterTest();
+        $job = $this->extracted_job(['The municipal water treatment process and its stages.']);
+        $this->add_topic_source((int) $job->id, 'Focus on operator safety during backwashing.');
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json())]);
+        (new blueprint_generator($stub))->generate_for_job($job);
+        $prompt = $stub->prompts()[0];
+
+        // Topic is a labeled directive, positioned ahead of SOURCE MATERIAL.
+        $this->assertStringContainsString('COURSE FOCUS:', $prompt);
+        $this->assertStringContainsString('Focus on operator safety during backwashing.', $prompt);
+        $this->assertLessThan(strpos($prompt, 'SOURCE MATERIAL:'), strpos($prompt, 'COURSE FOCUS:'));
+        // The topic appears exactly once — in the directive, not also in SOURCE MATERIAL.
+        $this->assertSame(1, substr_count($prompt, 'Focus on operator safety during backwashing.'));
+        // The fidelity rule is present (draw substance from the source).
+        $this->assertStringContainsString('draw all substantive content from the SOURCE MATERIAL', $prompt);
+        // The documents are the SOURCE MATERIAL; the topic is not in that block.
+        $sourcepart = substr($prompt, (int) strpos($prompt, 'SOURCE MATERIAL:'));
+        $this->assertStringContainsString('municipal water treatment process', $sourcepart);
+        $this->assertStringNotContainsString('operator safety during backwashing', $sourcepart);
+    }
+
+    /**
+     * Topic-only (D28): with no documents the directive carries the build, the
+     * SOURCE MATERIAL block notes none were provided, and a real course is still
+     * produced — no regression of the topic-only path.
+     *
+     * @return void
+     */
+    public function test_topic_only_still_builds_with_directive(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $job = $this->topic_only_job('Introduction to double-entry bookkeeping for small businesses.');
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json())]);
+        $ok = (new blueprint_generator($stub))->generate_for_job($job);
+
+        $this->assertTrue($ok);
+        $this->assertSame(1, $stub->call_count());
+        $prompt = $stub->prompts()[0];
+        $this->assertStringContainsString('COURSE FOCUS:', $prompt);
+        $this->assertStringContainsString('double-entry bookkeeping', $prompt);
+        $this->assertStringContainsString('No source documents were provided', $prompt);
+
+        $this->assertSame(
+            job_manager::STATUS_BLUEPRINTED,
+            $DB->get_field('coursegen_job', 'status', ['id' => $job->id])
+        );
+        $record = $DB->get_record('coursegen_blueprint', ['jobid' => $job->id, 'iscurrent' => 1], '*', MUST_EXIST);
+        $this->assertSame('Test Course', $record->title);
+    }
+
+    /**
+     * Documents only, no topic (D28): no COURSE FOCUS directive; SOURCE MATERIAL
+     * carries the documents exactly as before.
+     *
+     * @return void
+     */
+    public function test_documents_only_has_no_focus_directive(): void {
+        $this->resetAfterTest();
+        $job = $this->extracted_job(['Photosynthesis converts light energy into chemical energy.']);
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json())]);
+        (new blueprint_generator($stub))->generate_for_job($job);
+        $prompt = $stub->prompts()[0];
+
+        $this->assertStringNotContainsString('COURSE FOCUS:', $prompt);
+        $this->assertStringNotContainsString('No source documents were provided', $prompt);
+        $sourcepart = substr($prompt, (int) strpos($prompt, 'SOURCE MATERIAL:'));
+        $this->assertStringContainsString('Photosynthesis converts light energy', $sourcepart);
+    }
+
+    /**
      * Insert an extracted job with a single text source carrying the given blocks.
      *
      * @param string[] $paragraphs Paragraph texts for the corpus.
@@ -416,6 +496,56 @@ final class blueprint_generator_test extends \advanced_testcase {
             'timecreated' => $now,
             'timemodified' => $now,
         ]);
+        return $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
+    }
+
+    /**
+     * Attach a type='topic' source (the operator focus) to an existing job.
+     *
+     * @param int $jobid The job id.
+     * @param string $topic The topic text.
+     * @return void
+     */
+    private function add_topic_source(int $jobid, string $topic): void {
+        global $DB;
+        $corpus = new corpus();
+        $corpus->add_paragraph($topic);
+        $now = time();
+        $DB->insert_record('coursegen_source', (object) [
+            'jobid' => $jobid,
+            'type' => \local_coursegen\local\extractor\factory::TYPE_TOPIC,
+            'filename' => null,
+            'itemid' => $jobid,
+            'extractedchars' => $corpus->char_count(),
+            'corpus' => $corpus->to_json(),
+            'status' => 'extracted',
+            'timecreated' => $now,
+            'timemodified' => $now,
+        ]);
+    }
+
+    /**
+     * Insert an extracted job whose only source is a topic (no documents).
+     *
+     * @param string $topic The topic text.
+     * @return \stdClass The job record.
+     */
+    private function topic_only_job(string $topic): \stdClass {
+        global $DB;
+        $category = $this->getDataGenerator()->create_category();
+        $context = \context_coursecat::instance($category->id);
+        $now = time();
+        $jobid = $DB->insert_record('coursegen_job', (object) [
+            'userid' => 2,
+            'contextid' => $context->id,
+            'courseid' => null,
+            'mode' => 'outlinefirst',
+            'status' => job_manager::STATUS_EXTRACTED,
+            'timecreated' => $now,
+            'timemodified' => $now,
+            'usermodified' => 2,
+        ]);
+        $this->add_topic_source($jobid, $topic);
         return $DB->get_record('coursegen_job', ['id' => $jobid], '*', MUST_EXIST);
     }
 

@@ -41,7 +41,12 @@ permission; if you can create but not approve, that's why.)
   text/Markdown (`.txt`/`.md`); or
 - a **topic** — a sentence or two describing what the course should cover.
 
-You can provide both: a topic to steer it plus documents to draw from.
+You can provide both — and it's the strongest combination. The **topic sets the
+focus** (what the course should zero in on) and the **documents are the source of
+the actual content**. For example, a broad policy manual plus the topic *"focus on
+the visitor sign-in procedure"* yields a course about sign-in, written from the
+manual. The topic decides what it's about; your documents stay the authority for
+what it says.
 
 ---
 

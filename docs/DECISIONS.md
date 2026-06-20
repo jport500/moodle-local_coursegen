@@ -966,3 +966,47 @@ decision (which depends on whether the assessment built) and the stealth inline 
 per-second question-category idnumber collides when two assessments in one course bank
 within the same wall-clock second (latent; real generation spaces calls out by AI latency,
 but a fast/batch path could hit it).
+
+## D28 — The job topic is a labeled steering directive, separate from source material
+
+**Decision.** When a job has a topic, it is injected into the synthesis prompt as a
+labeled **COURSE FOCUS** directive — ahead of and separate from SOURCE MATERIAL —
+rather than riding into the corpus as an undifferentiated trailing source block (its
+prior behaviour, traced from the `type='topic'` source through `gather_corpus`). The
+topic is read out of its `type='topic'` source separately from the document sources and
+injected at **final synthesis**, so it survives intact regardless of corpus size and is
+**never folded into the map-reduced document corpus**. It is not duplicated in SOURCE
+MATERIAL. No schema change — the source `type` already distinguishes it.
+
+**Fidelity-safe wording.** The directive steers **scope, emphasis, and framing**, but
+instructs that substantive content be **drawn from the source material, not invented
+beyond it**: the topic decides *what the course is about*; the documents stay the
+authority for *what it says*. This distinction is load-bearing for compliance/SOP courses.
+
+**Placement (bracket, not adjacent).** COURSE FOCUS leads, ahead of SOURCE MATERIAL;
+COURSE DESIGN TARGETS (depth/level, D26) stays **after** SOURCE MATERIAL for the recency
+D26's real-transport smoke established. The two operator-intent directives *bracket* the
+source rather than sitting literally adjacent — moving the depth targets back above the
+source would risk regressing D26.
+
+**Topic-only is preserved.** With no documents, COURSE FOCUS carries the build, SOURCE
+MATERIAL renders "(No source documents were provided.)", and the model develops content
+from the focus plus general knowledge; the opening line no longer presumes a corpus.
+
+**Why.** The trace showed topic+documents steering was weak: the topic was one trailing
+block competing with the whole corpus, and in the over-budget map-reduce path only a
+*summary* of it survived. For the primary "documents + intent" workflow the topic should
+be an actual lever.
+
+**Evidence.** Real-transport smoke — the same water-cycle source produced *"Understanding
+the Water Cycle"* (broad) with no topic, but *"Evaporation Fundamentals for Facilities
+Staff"* (narrowed to evaporation, content drawn from the source) with the focus topic;
+topic-only still built a full course.
+
+**Rejected.** Leaving the topic in SOURCE MATERIAL (weak, buried, summary-only on large
+sources); a schema column for the topic (the `type='topic'` source already distinguishes
+it); moving COURSE DESIGN TARGETS above the source to sit adjacent (regresses D26 recency).
+
+**Revisit if.** The model over-weights the focus and starts inventing beyond the source
+(tighten the fidelity rule), or operators want multiple focus directives / a separate
+"must cover" list.
