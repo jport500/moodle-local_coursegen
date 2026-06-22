@@ -1158,7 +1158,10 @@ PROMPT;
      * @return string|null The clause, or null if the course holds no learner state.
      */
     public static function course_learner_state_reason(?int $courseid): ?string {
-        global $DB;
+        global $DB, $CFG;
+        // A public entry point: callers (e.g. the operator delete confirm) may not
+        // have completionlib loaded, so COMPLETION_INCOMPLETE could be undefined.
+        require_once($CFG->libdir . '/completionlib.php');
         if (empty($courseid) || !$DB->record_exists('course', ['id' => $courseid])) {
             return null;
         }
