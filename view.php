@@ -27,6 +27,7 @@ require(__DIR__ . '/../../config.php');
 
 use local_coursegen\local\blueprint;
 use local_coursegen\local\job_manager;
+use local_coursegen\local\materializer;
 
 /** @var int Seconds between auto-refreshes while a job is processing. */
 const LOCAL_COURSEGEN_REFRESH_SECONDS = 10;
@@ -65,7 +66,106 @@ if ($phase === job_manager::PHASE_PROCESSING) {
 
 $canreview = has_capability('local/coursegen:reviewgate', $context)
     || has_capability('local/coursegen:generate', $context);
+$canmanage = job_manager::can_manage($context);
 $editurl = new moodle_url('/local/coursegen/edit.php', ['jobid' => $job->id]);
+
+// Lifecycle actions (D31), all gated on :manage in this re-derived context.
+// Mutating actions are POST + sesskey; deletion goes through a confirm screen.
+$action = optional_param('action', '', PARAM_ALPHA);
+
+if ($action === 'unarchive') {
+    require_sesskey();
+    job_manager::require_manage($context);
+    job_manager::unarchive($job->id);
+    redirect(
+        $url,
+        get_string('job_unarchived_ok', 'local_coursegen'),
+        null,
+        \core\output\notification::NOTIFY_SUCCESS
+    );
+}
+
+if ($action === 'dodelete') {
+    require_sesskey();
+    job_manager::require_manage($context);
+    $coursegone = false;
+    if (
+        optional_param('deletecourse', 0, PARAM_BOOL)
+            && $job->courseid && $DB->record_exists('course', ['id' => $job->courseid])
+    ) {
+        // Defence in depth beyond :manage — the deleter must also hold Moodle's
+        // own course-delete right on the target course.
+        require_capability('moodle/course:delete', context_course::instance($job->courseid));
+        $reason = materializer::course_learner_state_reason((int) $job->courseid);
+        if ($reason !== null && !optional_param('learneroverride', 0, PARAM_BOOL)) {
+            // WARN-not-block (D20/D31): the manager may proceed, but only via the
+            // explicit override — don't silently drop the requested course delete.
+            redirect(new moodle_url($url, ['action' => 'confirmdelete']));
+        }
+        materializer::teardown_generated_course((int) $job->courseid);
+        $coursegone = true;
+    }
+    job_manager::archive($job->id);
+    redirect(
+        $huburl,
+        get_string($coursegone ? 'job_deleted_withcourse_ok' : 'job_archived_ok', 'local_coursegen'),
+        null,
+        \core\output\notification::NOTIFY_SUCCESS
+    );
+}
+
+if ($action === 'confirmdelete' && $canmanage) {
+    $haslivecourse = $job->courseid && $DB->record_exists('course', ['id' => $job->courseid]);
+    $reason = $haslivecourse ? materializer::course_learner_state_reason((int) $job->courseid) : null;
+
+    $PAGE->set_title(get_string('job_archive_confirm', 'local_coursegen'));
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('job_archive_confirm', 'local_coursegen'));
+    echo html_writer::tag('p', get_string('job_archive_explain', 'local_coursegen'));
+
+    echo html_writer::start_tag('form', ['method' => 'post', 'action' => $url->out(false)]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'dodelete']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+
+    if ($haslivecourse) {
+        echo html_writer::start_div('form-check mb-2');
+        echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'deletecourse', 'value' => 1,
+            'id' => 'cg_deletecourse', 'class' => 'form-check-input']);
+        echo html_writer::tag(
+            'label',
+            get_string('job_deletecourse_option', 'local_coursegen'),
+            ['for' => 'cg_deletecourse', 'class' => 'form-check-label']
+        );
+        echo html_writer::end_div();
+
+        if ($reason !== null) {
+            echo $OUTPUT->notification(
+                get_string('job_deletecourse_warning', 'local_coursegen', $reason),
+                'warning'
+            );
+            echo html_writer::start_div('form-check mb-2');
+            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'learneroverride', 'value' => 1,
+                'id' => 'cg_override', 'class' => 'form-check-input']);
+            echo html_writer::tag(
+                'label',
+                get_string('job_deletecourse_override', 'local_coursegen'),
+                ['for' => 'cg_override', 'class' => 'form-check-label']
+            );
+            echo html_writer::end_div();
+        }
+    }
+
+    echo html_writer::empty_tag('input', ['type' => 'submit',
+        'value' => get_string('job_delete_submit', 'local_coursegen'), 'class' => 'btn btn-danger']);
+    echo ' ' . html_writer::link(
+        $url,
+        get_string('job_delete_cancel', 'local_coursegen'),
+        ['class' => 'btn btn-secondary']
+    );
+    echo html_writer::end_tag('form');
+    echo $OUTPUT->footer();
+    return;
+}
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading($heading);
@@ -87,6 +187,10 @@ echo html_writer::tag(
     ['class' => 'text-muted']
 );
 
+if ($job->timearchived !== null) {
+    echo $OUTPUT->notification(get_string('job_archived_notice', 'local_coursegen'), 'info');
+}
+
 // Phase-specific guidance and the primary call to action.
 switch ($phase) {
     case job_manager::PHASE_PROCESSING:
@@ -104,6 +208,12 @@ switch ($phase) {
         break;
 
     case job_manager::PHASE_COMPLETE:
+        // The generated course was deleted out from under the job (D31): show the
+        // orphaned state plainly instead of a bare "built" success with no button.
+        if ($job->timecoursedeleted !== null) {
+            echo $OUTPUT->notification(get_string('job_coursedeleted_notice', 'local_coursegen'), 'warning');
+            break;
+        }
         // A re-materialize that was refused (D18/D20) leaves the job complete with
         // the existing course intact — surface that the rebuild was declined, but
         // not the benign in-build skip failures a good course also carries.
@@ -172,6 +282,25 @@ if ($blueprint) {
         if ($meta) {
             echo html_writer::tag('p', implode(' · ', $meta), ['class' => 'text-muted']);
         }
+    }
+}
+
+// Lifecycle actions (D31): restore an archived job, or delete (archive) an active
+// one — manager-only, in this context.
+if ($canmanage) {
+    if ($job->timearchived !== null) {
+        echo html_writer::start_tag('form', ['method' => 'post', 'action' => $url->out(false), 'class' => 'mt-3']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'unarchive']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::empty_tag('input', ['type' => 'submit',
+            'value' => get_string('job_unarchive_button', 'local_coursegen'), 'class' => 'btn btn-secondary']);
+        echo html_writer::end_tag('form');
+    } else {
+        echo html_writer::div($OUTPUT->single_button(
+            new moodle_url($url, ['action' => 'confirmdelete']),
+            get_string('job_archive_button', 'local_coursegen'),
+            'get'
+        ), 'mt-3');
     }
 }
 

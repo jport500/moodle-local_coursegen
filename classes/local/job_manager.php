@@ -261,21 +261,81 @@ class job_manager {
 
     /**
      * Jobs in a category context, newest activity first, each with its current
-     * blueprint title (null when none yet). Powers the category hub.
+     * blueprint title (null when none yet). Powers the category hub. By default
+     * only ACTIVE jobs are returned; pass $includearchived to also show archived
+     * ones (D31).
      *
      * @param int $contextid The category context id.
-     * @return \stdClass[] Rows of (id, status, mode, timecreated, timemodified, courseid, title).
+     * @param bool $includearchived Whether to include archived (soft-deleted) jobs.
+     * @return \stdClass[] Rows of (id, status, mode, timecreated, timemodified,
+     *         courseid, timearchived, timecoursedeleted, title).
      */
-    public static function jobs_in_context(int $contextid): array {
+    public static function jobs_in_context(int $contextid, bool $includearchived = false): array {
         global $DB;
+        $where = 'j.contextid = :contextid';
+        if (!$includearchived) {
+            $where .= ' AND j.timearchived IS NULL';
+        }
         return $DB->get_records_sql(
-            "SELECT j.id, j.status, j.mode, j.timecreated, j.timemodified, j.courseid, b.title
+            "SELECT j.id, j.status, j.mode, j.timecreated, j.timemodified, j.courseid,
+                    j.timearchived, j.timecoursedeleted, b.title
                FROM {coursegen_job} j
           LEFT JOIN {coursegen_blueprint} b ON b.jobid = j.id AND b.iscurrent = 1
-              WHERE j.contextid = :contextid
+              WHERE {$where}
            ORDER BY j.timemodified DESC, j.id DESC",
             ['contextid' => $contextid]
         );
+    }
+
+    /**
+     * Whether the user may manage jobs (archive / opt-in course delete) in a
+     * context — the :manage capability (D31).
+     *
+     * @param \context $context The category context.
+     * @param int|\stdClass|null $user The user (defaults to the current user).
+     * @return bool
+     */
+    public static function can_manage(\context $context, $user = null): bool {
+        return has_capability('local/coursegen:manage', $context, $user);
+    }
+
+    /**
+     * Throw unless the user may manage jobs in a context (D31).
+     *
+     * @param \context $context The category context.
+     * @return void
+     * @throws \required_capability_exception
+     */
+    public static function require_manage(\context $context): void {
+        require_capability('local/coursegen:manage', $context);
+    }
+
+    /**
+     * Archive a job (soft-delete, reversible — D31). Never touches the course.
+     *
+     * @param int $jobid The job id.
+     * @return void
+     */
+    public static function archive(int $jobid): void {
+        global $DB;
+        $now = time();
+        $DB->update_record('coursegen_job', (object) [
+            'id' => $jobid, 'timearchived' => $now, 'timemodified' => $now,
+        ]);
+    }
+
+    /**
+     * Unarchive a job, restoring it to the active list (D31).
+     *
+     * @param int $jobid The job id.
+     * @return void
+     */
+    public static function unarchive(int $jobid): void {
+        global $DB;
+        $now = time();
+        $DB->update_record('coursegen_job', (object) [
+            'id' => $jobid, 'timearchived' => null, 'timemodified' => $now,
+        ]);
     }
 
     /**

@@ -118,7 +118,7 @@ class materializer {
         // Refuse rather than destroy the course's live learner state on a
         // re-materialize (D20). Runs BEFORE any cleanup, so a refusal leaves the
         // existing course fully intact.
-        $reason = $this->course_learner_state_reason($job);
+        $reason = self::course_learner_state_reason(isset($job->courseid) ? (int) $job->courseid : null);
         if ($reason !== null) {
             $this->refuse(
                 $job,
@@ -1145,18 +1145,21 @@ PROMPT;
     }
 
     /**
-     * The course's own live-learner-state clause for a refusal, or null if none
-     * (D20). A freshly-built course has zero enrolments and zero completion, so
-     * any of these is a genuine addition that delete_course would destroy:
+     * The course's own live-learner-state clause, or null if none (D20). A
+     * freshly-built course has zero enrolments and zero completion, so any of
+     * these is a genuine addition that delete_course would destroy:
      *  - any enrolled learner (manual, self, cohort, …);
      *  - real completion progress (a finished activity, or course completion).
      *
-     * @param \stdClass $job The job.
+     * Public+static so both the re-materialize refusal (D20) and the operator's
+     * opt-in course delete (D31) share one definition of "has learner state".
+     *
+     * @param int|null $courseid The course id (null/0/missing course -> null).
      * @return string|null The clause, or null if the course holds no learner state.
      */
-    private function course_learner_state_reason(\stdClass $job): ?string {
+    public static function course_learner_state_reason(?int $courseid): ?string {
         global $DB;
-        if (empty($job->courseid) || !$DB->record_exists('course', ['id' => $job->courseid])) {
+        if (empty($courseid) || !$DB->record_exists('course', ['id' => $courseid])) {
             return null;
         }
         $parts = [];
@@ -1166,7 +1169,7 @@ PROMPT;
                FROM {user_enrolments} ue
                JOIN {enrol} e ON e.id = ue.enrolid
               WHERE e.courseid = :courseid",
-            ['courseid' => $job->courseid]
+            ['courseid' => $courseid]
         );
         if ($enrolled > 0) {
             $parts[] = "the course has {$enrolled} enrolled learner(s)";
@@ -1177,12 +1180,12 @@ PROMPT;
                FROM {course_modules_completion} cmc
                JOIN {course_modules} cm ON cm.id = cmc.coursemoduleid
               WHERE cm.course = :courseid AND cmc.completionstate <> :incomplete",
-            ['courseid' => $job->courseid, 'incomplete' => COMPLETION_INCOMPLETE]
+            ['courseid' => $courseid, 'incomplete' => COMPLETION_INCOMPLETE]
         );
         $progress += $DB->count_records_select(
             'course_completions',
             'course = :courseid AND timecompleted IS NOT NULL',
-            ['courseid' => $job->courseid]
+            ['courseid' => $courseid]
         );
         if ($progress > 0) {
             $parts[] = "{$progress} learner completion record(s)";
