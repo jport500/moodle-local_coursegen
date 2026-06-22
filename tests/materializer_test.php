@@ -257,6 +257,46 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * teardown_generated_course removes the course AND the quizgenpro question
+     * categories banked for it — verified cascade, not blind trust (D31). The
+     * categories live in a qbank module context inside the course, so deleting
+     * the course context cascades them and their question-bank entries.
+     *
+     * @return void
+     */
+    public function test_teardown_cascades_quizgenpro_categories(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+        $job = $this->approved_job_with([
+            ['title' => 'Assessed', 'summary' => 's', 'objectives' => ['o'],
+             'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 3]],
+        ]);
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // Banking created a quizgen-* category with entries; capture them.
+        $cats = $DB->get_records_select('question_categories', $DB->sql_like('idnumber', ':p'), ['p' => 'quizgen-%']);
+        $this->assertNotEmpty($cats, 'banking should have created a quizgen-* category');
+        $catids = array_keys($cats);
+        [$insql, $params] = $DB->get_in_or_equal($catids);
+        $this->assertGreaterThan(0, $DB->count_records_select('question_bank_entries', "questioncategoryid $insql", $params));
+
+        materializer::teardown_generated_course($courseid);
+
+        // Course gone, and the quizgen-* categories and their entries cascaded with it.
+        $this->assertFalse($DB->record_exists('course', ['id' => $courseid]));
+        $this->assertEquals(0, $DB->count_records_select(
+            'question_categories',
+            $DB->sql_like('idnumber', ':p'),
+            ['p' => 'quizgen-%']
+        ));
+        $this->assertEquals(0, $DB->count_records_select('question_bank_entries', "questioncategoryid $insql", $params));
+    }
+
+    /**
      * With the filter DISABLED, the check is created non-stealth (shown on the
      * course page) with no token, and the course still completes.
      *

@@ -100,6 +100,33 @@ final class privacy_provider_test extends \advanced_testcase {
     }
 
     /**
+     * Erasure also tears down the job's generated course (D31) — the prior leak
+     * left the course (and its quizgenpro categories) behind. The teardown is
+     * mandatory and un-gated: it runs regardless of learner state.
+     *
+     * @return void
+     */
+    public function test_delete_tears_down_generated_course(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $category = $this->getDataGenerator()->create_category();
+        $context = \context_coursecat::instance($category->id);
+        $course = $this->getDataGenerator()->create_course();
+        $now = time();
+        $jobid = $DB->insert_record('coursegen_job', (object) [
+            'userid' => $user->id, 'contextid' => $context->id, 'courseid' => $course->id,
+            'mode' => 'automatic', 'status' => 'complete',
+            'timecreated' => $now, 'timemodified' => $now, 'usermodified' => $user->id,
+        ]);
+
+        provider::delete_data_for_user(new approved_contextlist($user, 'local_coursegen', [$context->id]));
+
+        $this->assertFalse($DB->record_exists('coursegen_job', ['id' => $jobid]));
+        $this->assertFalse($DB->record_exists('course', ['id' => $course->id]), 'the generated course must be torn down');
+    }
+
+    /**
      * Build a job owned by a fresh user, with a source corpus, a stored file
      * and an audit-log row, in a category context.
      *

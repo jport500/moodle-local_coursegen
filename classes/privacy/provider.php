@@ -363,6 +363,16 @@ class provider implements
         }
         [$insql, $params] = $DB->get_in_or_equal($jobids, SQL_PARAMS_NAMED);
 
+        // Tear down each job's generated course (and its quizgenpro categories,
+        // which cascade with the course context) via the shared teardown (D31), so
+        // erasure leaves nothing behind. This is a MANDATORY hard delete: unlike
+        // the operator's opt-in course delete, it does NOT apply the D20
+        // learner-state warning — a GDPR erasure cannot be gated on learner state.
+        $courseids = $DB->get_fieldset_select('coursegen_job', 'courseid', "id $insql AND courseid IS NOT NULL", $params);
+        foreach ($courseids as $courseid) {
+            \local_coursegen\local\materializer::teardown_generated_course((int) $courseid);
+        }
+
         $DB->delete_records_select('coursegen_log', "jobid $insql", $params);
         $DB->delete_records_select('coursegen_blueprint', "jobid $insql", $params);
         $DB->delete_records_select('coursegen_source', "jobid $insql", $params);
