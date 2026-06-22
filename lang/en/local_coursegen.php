@@ -35,6 +35,7 @@ $string['blueprintquiz'] = 'Graded quiz: {$a} questions';
 $string['blueprintview'] = 'Generated blueprint';
 $string['coursegen:configure'] = 'Configure the AI course builder';
 $string['coursegen:generate'] = 'Generate courses with the AI course builder';
+$string['coursegen:manage'] = 'Manage generation jobs (archive, and optionally delete the generated course)';
 $string['coursegen:reviewgate'] = 'Approve a generation blueprint for materialization';
 $string['createjob'] = 'Create a generation job';
 $string['depth_brief'] = 'Brief — a few focused sections';

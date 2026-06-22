@@ -59,4 +59,17 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
+
+    // Manage existing jobs: archive/unarchive, and the opt-in deletion of a
+    // generated course (D31). More destructive than :generate/:reviewgate — it
+    // can trigger delete_course() — so it is manager-only (not editingteacher)
+    // and carries RISK_DATALOSS.
+    'local/coursegen:manage' => [
+        'riskbitmask'  => RISK_DATALOSS,
+        'captype'      => 'write',
+        'contextlevel' => CONTEXT_COURSECAT,
+        'archetypes'   => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];

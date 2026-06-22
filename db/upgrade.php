@@ -111,5 +111,29 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026061700, 'local', 'coursegen');
     }
 
+    if ($oldversion < 2026062300) {
+        // P21 (D31): job lifecycle — soft-delete (archive) and the course-deleted
+        // orphan flag. Both nullable; existing rows are active with intact courses.
+        $table = new xmldb_table('coursegen_job');
+        $timearchived = new xmldb_field('timearchived', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'actualspend');
+        if (!$dbman->field_exists($table, $timearchived)) {
+            $dbman->add_field($table, $timearchived);
+        }
+        $timecoursedeleted = new xmldb_field(
+            'timecoursedeleted',
+            XMLDB_TYPE_INTEGER,
+            '10',
+            null,
+            null,
+            null,
+            null,
+            'timearchived'
+        );
+        if (!$dbman->field_exists($table, $timecoursedeleted)) {
+            $dbman->add_field($table, $timecoursedeleted);
+        }
+        upgrade_plugin_savepoint(true, 2026062300, 'local', 'coursegen');
+    }
+
     return true;
 }

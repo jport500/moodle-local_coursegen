@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/coursegen/db" VERSION="20260617" COMMENT="Tables for local_coursegen (v0.1 schema — SPEC §3)."
+<XMLDB PATH="local/coursegen/db" VERSION="20260623" COMMENT="Tables for local_coursegen (v0.1 schema — SPEC §3)."
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
 >
@@ -16,6 +16,8 @@
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="extracting" SEQUENCE="false" COMMENT="extracting | blueprinted | awaiting_review | materializing | assessing | complete | failed."/>
         <FIELD NAME="estimatedspend" TYPE="number" LENGTH="10" DECIMALS="4" NOTNULL="false" SEQUENCE="false" COMMENT="Estimated generation cost computed at the blueprint stage."/>
         <FIELD NAME="actualspend" TYPE="number" LENGTH="10" DECIMALS="4" NOTNULL="false" SEQUENCE="false" COMMENT="Actual accrued generation cost."/>
+        <FIELD NAME="timearchived" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="When the job was archived (soft-delete); NULL = active (D31)."/>
+        <FIELD NAME="timecoursedeleted" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="When the generated course was deleted out from under the job; NULL = course intact or none (D31)."/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
