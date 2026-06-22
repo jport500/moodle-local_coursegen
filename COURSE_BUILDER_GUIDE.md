@@ -211,10 +211,29 @@ drifted policy section in private and explaining it after the fact.
 | The build **stalled** part-way | A background step hasn't run, or is stuck. | Leave the page open a few minutes (it refreshes itself). If it doesn't move, contact your administrator. |
 | **"Spend cap reached"** or generation **stops early** | Your site has a generation budget (cost control) and this period's is used up. | Wait for the budget period to reset, or ask your administrator to raise the cap. |
 
-**Discarding a build you don't want.** Delete the course through Moodle's normal
-course management — open the course, go to its **settings → Delete**. The build's
-record stays in the hub, but the course is removed. (Deleting from the hub itself
-isn't available yet; this guide will be updated when it is.)
+---
+
+## Archiving and deleting jobs
+
+On a job's page, **Delete this job…** opens a short confirm screen. *(This needs the
+manage permission — your administrator grants it.)*
+
+- **Archiving** is the safe default. The job is moved out of the active list but **kept** —
+  with its cost and history — so you can bring it back later. **The generated course is
+  left untouched.** Archived jobs are reversible: in the hub, **Show archived** lists them,
+  each with a **Restore** button.
+- **Also deleting the course** is a separate, deliberate choice. On the confirm screen,
+  tick **"Also permanently delete the generated course"** to remove the course as well as
+  archiving the job. This is **off by default** — if you leave it unticked, only the job is
+  archived and the course stays exactly as it is.
+  - If the course already has **learner activity** (enrolments or completions), you'll see
+    a **warning** and must tick an extra box to confirm you understand that learner data
+    will be permanently destroyed. Deleting a course **cannot be undone** — unlike
+    archiving.
+
+**If a course is deleted out from under a job** — for example, someone removes it through
+Moodle's normal course management — the job isn't lost. It stays in the hub marked
+**"Course deleted"**, keeping its record and cost; there's simply no course to open.
 
 ---
 

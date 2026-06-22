@@ -3,6 +3,28 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.18.0 — 2026-06-22 (Job lifecycle: archive, opt-in course delete, orphan flag)
+
+The hub gains a job lifecycle. See DECISIONS D31.
+
+- **Archive (soft-delete):** the operator's "Delete this job" archives it — reversible,
+  kept with its cost and history, course untouched. The hub shows active jobs by default
+  with a Show/Hide-archived toggle and inline Restore. Stored as a nullable `timearchived`
+  column (not an overloaded status).
+- **Opt-in course delete:** the archive confirm has an OFF-by-default "also delete the
+  generated course". It re-checks `moodle/course:delete` and, if the course has learner
+  activity, warns and requires an explicit override (warn, don't block — the manager's
+  call). Deletion goes through a shared teardown that also removes the quizgenpro question
+  categories (they cascade with the course context — verified, not assumed).
+- **Orphan flag:** a new `course_deleted` observer flags any job whose generated course is
+  deleted (via the plugin or Moodle's course management) — sets a `timecoursedeleted`
+  column, nulls the link, and the hub/job page show a clear "course deleted" state. The
+  job stays visible (not archived).
+- **Privacy leak fixed:** GDPR erasure now also tears down the generated course and its
+  quizgenpro categories (previously left behind) — mandatory and un-gated.
+- **New capability `local/coursegen:manage`** (manager, RISK_DATALOSS) gates the archive
+  and course-delete actions; tenancy is enforced per category context.
+
 ## v0.17.2 — 2026-06-22 (Fix: steer images to text-free illustrations)
 
 Section images were coming back garbled (mis-rendered text) and truncated (clipped),

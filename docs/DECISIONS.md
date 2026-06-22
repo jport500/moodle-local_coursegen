@@ -1087,3 +1087,65 @@ strip text (the model shouldn't be asked to render text at all).
 **Revisit if.** A provider that *does* honor `style` becomes the image tier (then revisit
 'natural'), or operators legitimately need labeled diagrams (would be a separate,
 diagram-capable path, not the illustration path).
+
+## D31 — Job lifecycle: archive (soft-delete), opt-in course delete, orphan flag
+
+**Decision.** The hub gets a job lifecycle. "Deleting" a job from the operator's point of
+view is a reversible **archive** (soft-delete), and deleting the generated *course* is a
+separate, explicit, off-by-default option.
+
+- **Archive = soft-delete.** A nullable `coursegen_job.timearchived` (null = active); a
+  separate column, NOT an overloaded `status` (which would destroy the real pipeline
+  state). The hub shows active jobs by default (`timearchived IS NULL`) with a
+  Show/Hide-archived toggle and an inline Restore. Archiving never touches the course and
+  preserves the `coursegen_log` spend/provenance. Reversible via unarchive.
+- **Opt-in course delete.** The archive confirm offers an OFF-by-default "also delete the
+  generated course". When chosen it re-checks `moodle/course:delete` on the target course
+  (defence in depth beyond `:manage`) and applies the D20 learner-state check as a
+  **WARN-not-block**: if the course has enrolments or completion, the manager sees a clear
+  warning and must tick an explicit override — the requested delete is never silently
+  dropped, but it is the manager's call (not a hard block). Deletion routes through the
+  shared teardown.
+- **Shared teardown mechanism.** `materializer::teardown_generated_course(int $courseid)`
+  — `delete_course()` only. The quizgenpro question categories banked for a course live in
+  a qbank MODULE context inside the course, so they (and their entries/versions/questions)
+  cascade with the course context; there is NO separate category to sweep, and an idnumber
+  (`quizgen-*`) sweep would risk other courses' categories. Verified by a test that asserts
+  no `quizgen-*` category or entries survive teardown (verified cascade, not blind trust).
+  Mechanism only — no capability, confirm, or learner gate inside it, so all three callers
+  (rebuild cleanup, operator delete, privacy erase) share it.
+- **Orphan flag, don't archive.** A nullable `timecoursedeleted`. A `course_deleted` event
+  observer (new `db/events.php`) flags EVERY job whose `courseid` matches the deleted
+  course (a courseid can match several across rebuilds): sets `timecoursedeleted`, nulls
+  `courseid`. The job stays visible and un-archived — the operator should still see it and
+  its cost. The hub row and job page render the "course deleted" state explicitly instead
+  of a bare "complete". Because the observer fires for the internal rebuild cleanup too, a
+  successful re-materialize clears `timecoursedeleted` as its deliberate LAST step (after
+  the cleanup's event fired and after courseid was re-set), so a rebuild is never
+  mis-flagged.
+- **Privacy leak fixed via the same teardown.** The GDPR erase path
+  (`delete_jobs_and_children`) previously removed the coursegen_* rows but left the
+  generated course (and its quizgenpro categories) behind. It now routes each job's course
+  through the teardown — a MANDATORY, un-gated hard delete: unlike the operator path it
+  does NOT apply the learner-state warning, because erasure cannot be gated on learner
+  state.
+- **New capability `local/coursegen:manage`** — CONTEXT_COURSECAT, RISK_DATALOSS,
+  manager-only (NOT editingteacher, since it can trigger course deletion). Tenancy is the
+  established pattern: actions re-derive the context from `$job->contextid` and re-check
+  `:manage`, so an operator only ever acts on jobs in their own category context.
+
+**Why.** Operators had no way to remove a job (we reset demo2 by hand-rolled SQL). Archive
+gives a safe, reversible default that preserves cost/provenance; course deletion is the
+rare, explicit, gated action; and a deleted course should leave a legible record, not a
+broken "complete".
+
+**Rejected.** Overloading `status='archived'` (loses pipeline state, breaks
+classify_status and the status strings); hard-deleting jobs as the default verb (hard
+purge is a separate later action; the privacy path already hard-deletes for GDPR);
+hard-blocking course deletion on learner state (manager's call — warn + override); an
+idnumber sweep for quizgenpro categories (risks other courses); flagging-by-archiving an
+orphaned job (hides the record the operator needs).
+
+**Revisit if.** A hard-purge-from-archive operator action is wanted (the mechanism — the
+teardown + child-row delete — already exists in the privacy path and can be surfaced), or
+bulk archive/restore from the hub is needed.
