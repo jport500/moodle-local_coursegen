@@ -1236,3 +1236,45 @@ filename); hint-editing in v1 (out of scope — reuse the stored hint).
 
 **Revisit if.** Operators want to edit the hint before regenerating, or to add an image to
 a section that has none (the deferred flagged-but-failed / opt-in-after-the-fact case).
+
+## D34 — Regenerate-image cache-bust: new filename + single-reference edit (D33 follow-up)
+
+**Decision.** The D33 regenerate-image swap is changed from "overwrite the file under the
+SAME filename" to "write a NEW unique filename and repoint the one image reference in
+`label.intro`". The original same-filename overwrite worked server-side but left the
+rendered `pluginfile` URL identical — and `mod_label` intro images are served with a
+6-hour browser `max-age` and no revisionable URL component — so the browser kept serving
+the cached old image for hours (the pilot symptom). A new filename means a new URL, so the
+browser fetches the new image on a normal reload. No server-side revision lever exists, so
+this is the only real fix (investigation confirmed).
+
+**Means vs. end (the reframe).** D33's guarantee was "the reading prose and the
+`{knowledgecheck}` token survive intact." The byte-identical-`label.intro` property was the
+*means*, not the *end*. This swaps the means — a precise single-substring edit instead of an
+in-place file overwrite — while keeping the end: the ONLY change to `label.intro` is the one
+old→new filename substring inside the single image reference; the reading prose and the
+token are byte-for-byte unchanged. The test asserts exactly that
+(`str_replace(new, old, after) === before`).
+
+**Mechanism (`image_regenerator`).** On a successful generation: read `label.intro`; build
+the exact anchor `@@PLUGINFILE@@/<oldname>`; pick a fresh unique filename (same extension);
+`str_replace(..., $count)` and **require `$count === 1`** — if the reference isn't found
+exactly once, **abort** (log failure, return false, change nothing). Then create the new
+file, repoint `label.intro` (+ bump `label.timemodified`), delete the old file, and
+`rebuild_course_cache(..., true)`. Order is deliberate: the new file exists before the label
+points to it and the old file is deleted only after, so `label.intro` always references a
+file that exists — a mid-step fault leaves the old image showing, never corruption.
+
+**Preserved.** Failure semantics (generation failure OR anchor-not-exactly-once → image +
+label untouched, failure logged); capability gating; image sub-cap accounting/logging; alt
+text (same `<img>`, only the `src` filename changes); the no-image no-op; the
+cap-exhausted refuse.
+
+**Rejected.** A server-side URL-revision bump (no such lever exists for mod_label intro —
+the URL is `/pluginfile.php/<ctx>/mod_label/intro/<filename>` with no rev, 6h max-age); the
+hard-refresh hint (the 6h cache makes a normal reload show the stale image — unreliable);
+keeping the same filename (the direct cause of the symptom).
+
+**Revisit if.** Moodle gains a revisionable pluginfile URL for module intro files (a
+cleaner bump than a filename change), or the regenerate moves to a background task (a
+separate concern — the synchronous inline call is still a slow-request UX issue, deferred).

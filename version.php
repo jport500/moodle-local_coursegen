@@ -25,13 +25,13 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026062303;
+$plugin->version = 2026062304;
 // Verified floor: only Moodle 5.2 (2026042000) on PHP 8.3 has been exercised. The
 // code uses no 5.2-only APIs, but the declared floor reflects what is actually
 // tested rather than an unverified 5.1/PHP 8.2 claim (see docs/DECISIONS D19).
 $plugin->requires = 2026042000;
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v0.19.0';
+$plugin->release = 'v0.19.1';
 // Dependency floors reconciled to reality (DECISIONS D32). Each is either a real
 // minimum (the earliest version with the API surface coursegen calls) or a
 // "verified floor" (the demo2-exercised version, where a true historical minimum

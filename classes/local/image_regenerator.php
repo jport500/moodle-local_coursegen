@@ -31,9 +31,13 @@ use local_coursegen\local\ai\image_client;
  * the section's stored hint (D33). The image lives as a file in the section's
  * reading-label intro filearea, referenced by @@PLUGINFILE@@/<filename> in the
  * label HTML beside the reading prose and any {knowledgecheck} token. The new
- * image is written under the SAME filename, so the label HTML is never touched
- * and the reading prose + token survive byte-for-byte. The reading is NOT
- * recoverable separately (it exists only in the label), so this is the safe path.
+ * image is written under a NEW unique filename and the single image reference in
+ * label.intro is repointed to it (D34) — a new filename means a new pluginfile
+ * URL, so the browser fetches the new image instead of serving the cached old one.
+ * The edit is exact: ONLY the one old->new filename substring changes, so the
+ * reading prose and the {knowledgecheck} token are byte-for-byte unchanged (the
+ * real D33 guarantee). The reading is NOT recoverable separately (it exists only
+ * in the label), so an in-place edit is the only path.
  */
 class image_regenerator {
     /** @var string Audit stage (a materialize-domain image op). */
@@ -127,19 +131,49 @@ class image_regenerator {
             return false;
         }
 
-        // Replace the file in place under the SAME filename so the label HTML's
-        // @@PLUGINFILE@@/<filename> reference still resolves — the reading prose and
-        // the {knowledgecheck} token are never touched.
-        $filerecord = [
+        // Repoint the single image reference in label.intro to a NEW filename (D34).
+        // The same-filename overwrite kept the pluginfile URL identical, so the
+        // browser served the cached image for hours; a new filename changes the URL
+        // and busts the cache. We edit ONLY the one old->new filename substring, so
+        // the reading prose and the {knowledgecheck} token are byte-for-byte unchanged.
+        $labelcmid = \context::instance_by_id($existing->get_contextid())->instanceid;
+        $labelcm = get_coursemodule_from_id('label', $labelcmid, 0, false, MUST_EXIST);
+        $intro = $DB->get_field('label', 'intro', ['id' => $labelcm->instance], MUST_EXIST);
+
+        $oldname = $existing->get_filename();
+        $ext = pathinfo($oldname, PATHINFO_EXTENSION);
+        $newname = bin2hex(random_bytes(8)) . ($ext !== '' ? '.' . $ext : '');
+        $count = 0;
+        $newintro = str_replace('@@PLUGINFILE@@/' . $oldname, '@@PLUGINFILE@@/' . $newname, $intro, $count);
+        if ($count !== 1) {
+            // The expected single image reference was not found exactly once — abort
+            // the swap and leave the existing image AND label exactly as-is (D34 guard).
+            audit_log::record(
+                (int) $job->id,
+                $userid,
+                self::STAGE,
+                audit_log::FAILURE,
+                "regenerate image (section {$sectionindex}) aborted: image reference not found exactly once",
+                ['tier' => self::TIER]
+            );
+            return false;
+        }
+
+        // Create the new file BEFORE repointing the label, and delete the old AFTER —
+        // so label.intro always references a file that exists, even on a mid-step fault.
+        get_file_storage()->create_file_from_storedfile([
             'contextid' => $existing->get_contextid(),
             'component' => $existing->get_component(),
             'filearea' => $existing->get_filearea(),
             'itemid' => $existing->get_itemid(),
             'filepath' => $existing->get_filepath(),
-            'filename' => $existing->get_filename(),
-        ];
+            'filename' => $newname,
+        ], $result->draftfile);
+        $now = time();
+        $DB->set_field('label', 'intro', $newintro, ['id' => $labelcm->instance]);
+        $DB->set_field('label', 'timemodified', $now, ['id' => $labelcm->instance]);
         $existing->delete();
-        get_file_storage()->create_file_from_storedfile($filerecord, $result->draftfile);
+        rebuild_course_cache((int) $job->courseid, true);
 
         audit_log::record(
             (int) $job->id,

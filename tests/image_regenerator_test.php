@@ -61,22 +61,38 @@ final class image_regenerator_test extends \advanced_testcase {
         filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
         [$job, $courseid] = $this->built_course();
 
-        // Capture section 0's reading label intro (reading + image + KC token) and
-        // its image file content before regeneration.
-        [$introbefore, $filebefore] = $this->label_intro_and_image($courseid, 0);
+        // Capture section 0's reading label intro (reading + image + KC token), its
+        // image file content and filename before regeneration.
+        [$introbefore, $filebefore, $namebefore] = $this->label_intro_and_image($courseid, 0);
         $this->assertStringContainsString('{knowledgecheck id=', $introbefore);
-        $this->assertStringContainsString('@@PLUGINFILE@@', $introbefore);
+        $this->assertStringContainsString('@@PLUGINFILE@@/' . $namebefore, $introbefore);
+        // Reading prose marker (from the stub) present before.
+        $this->assertStringContainsString('Original reading prose', $introbefore);
 
         $newbytes = $this->png_bytes('regenerated');
         $regen = new image_regenerator($this->image_returning($newbytes));
         $this->assertTrue($regen->regenerate($job, 0, 2));
 
-        // The label intro is byte-for-byte identical: reading prose and token survive.
-        [$introafter, $fileafter] = $this->label_intro_and_image($courseid, 0);
-        $this->assertSame($introbefore, $introafter, 'label.intro must be unchanged');
-        // The image FILE content changed.
-        $this->assertNotSame($filebefore, $fileafter, 'the image file should be replaced');
+        [$introafter, $fileafter, $nameafter, $countafter] = $this->label_intro_and_image($courseid, 0);
+
+        // The image FILE is NEW: new filename, new content, and the old file is gone
+        // (no orphan — exactly one file in the area).
+        $this->assertNotSame($namebefore, $nameafter, 'the filename should change (cache-bust)');
         $this->assertSame($newbytes, $fileafter);
+        $this->assertNotSame($filebefore, $fileafter);
+        $this->assertSame(1, $countafter, 'the old image file must be deleted (no orphan)');
+
+        // The intro changed in EXACTLY the one expected way: the old filename ->
+        // the new filename. Everything else — reading prose and the KC token — is
+        // byte-for-byte unchanged (the real D33/D34 guarantee).
+        $this->assertNotSame($introbefore, $introafter);
+        $this->assertSame(
+            $introbefore,
+            str_replace('@@PLUGINFILE@@/' . $nameafter, '@@PLUGINFILE@@/' . $namebefore, $introafter),
+            'the only change to label.intro must be the one image filename substring'
+        );
+        $this->assertStringContainsString('Original reading prose', $introafter);
+        $this->assertStringContainsString('{knowledgecheck id=', $introafter);
 
         // An image-regenerate success row was logged with imagecount 1.
         $this->assertTrue($DB->record_exists_select(
@@ -87,8 +103,42 @@ final class image_regenerator_test extends \advanced_testcase {
         ));
 
         // The OTHER section's image is untouched.
-        [, $other] = $this->label_intro_and_image($courseid, 1);
+        [$intro1, $other] = $this->label_intro_and_image($courseid, 1);
         $this->assertNotSame($newbytes, $other, 'section 1 image must be untouched');
+    }
+
+    /**
+     * If the expected single image reference isn't found exactly once in
+     * label.intro, the swap aborts: the existing image and label are unchanged and
+     * a failure is logged (D34 guard).
+     *
+     * @return void
+     */
+    public function test_anchor_not_found_aborts(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        [$job, $courseid] = $this->built_course();
+
+        // Corrupt the anchor: remove the image reference from label.intro so the
+        // old filename no longer appears, while the image FILE still exists.
+        [$introbefore, $filebefore, $namebefore] = $this->label_intro_and_image($courseid, 0);
+        $labelcm = $this->label_cm($courseid, 0);
+        $mangled = str_replace('@@PLUGINFILE@@/' . $namebefore, '@@PLUGINFILE@@/somethingelse.png', $introbefore);
+        $DB->set_field('label', 'intro', $mangled, ['id' => $labelcm->instance]);
+
+        $this->assertFalse((new image_regenerator($this->image_returning($this->png_bytes('x'))))
+            ->regenerate($job, 0, 2));
+
+        // The image file is untouched and the (mangled) intro is left as-is.
+        [$introafter, $fileafter] = $this->label_intro_and_image($courseid, 0);
+        $this->assertSame($filebefore, $fileafter, 'image must be untouched when the anchor is missing');
+        $this->assertSame($mangled, $introafter, 'label.intro must be left as-is');
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            "jobid = :j AND tier = 'image' AND outcome = 'failure'",
+            ['j' => $job->id]
+        ));
     }
 
     /**
@@ -203,12 +253,31 @@ final class image_regenerator_test extends \advanced_testcase {
     }
 
     /**
-     * The reading label's intro HTML and its image file content for a blueprint
-     * section index (course section index+1).
+     * The reading label cm_info for a blueprint section index (course section i+1).
      *
      * @param int $courseid The course id.
      * @param int $sectionindex The 0-based blueprint section index.
-     * @return array{0:string,1:string} [intro html, image bytes]
+     * @return \cm_info
+     */
+    private function label_cm(int $courseid, int $sectionindex): \cm_info {
+        $modinfo = get_fast_modinfo($courseid);
+        foreach ($modinfo->get_sections()[$sectionindex + 1] ?? [] as $cmid) {
+            $cm = $modinfo->get_cm($cmid);
+            if ($cm->modname === 'label') {
+                return $cm;
+            }
+        }
+        $this->fail("no reading label in section {$sectionindex}");
+    }
+
+    /**
+     * The reading label's intro HTML, its image file content, the image filename,
+     * and the file count in the intro area, for a blueprint section index (course
+     * section index+1).
+     *
+     * @param int $courseid The course id.
+     * @param int $sectionindex The 0-based blueprint section index.
+     * @return array{0:string,1:string,2:?string,3:int} [intro, bytes, filename, filecount]
      */
     private function label_intro_and_image(int $courseid, int $sectionindex): array {
         global $DB;
@@ -231,8 +300,8 @@ final class image_regenerator_test extends \advanced_testcase {
             'filename',
             false
         );
-        $bytes = $files ? reset($files)->get_content() : '';
-        return [$intro, $bytes];
+        $file = $files ? reset($files) : null;
+        return [$intro, $file ? $file->get_content() : '', $file ? $file->get_filename() : null, count($files)];
     }
 
     /**

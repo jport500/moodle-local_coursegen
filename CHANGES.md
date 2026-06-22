@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.19.1 — 2026-06-22 (Fix: regenerated image now actually shows)
+
+The D33 regenerate-image action worked server-side but the browser kept showing the old
+image: mod_label intro images are served at a filename-based URL with a 6-hour browser
+cache and no revisionable component, and the swap reused the same filename, so the URL never
+changed. See DECISIONS D34.
+
+- The regenerated image is now written under a **new unique filename**, and the single image
+  reference in the section's label is repointed to it — so the URL changes and the browser
+  fetches the new image on a normal reload (the "hard refresh" caveat is gone).
+- Only that one filename substring changes: the reading prose and any inline knowledge-check
+  token are still byte-for-byte unchanged (the real D33 guarantee, kept).
+- Safe ordering and an exact single-occurrence guard: if the expected image reference isn't
+  found exactly once, the swap aborts and the existing image and label are left untouched.
+- The old image file is removed (no orphans); failure/cap/capability behaviour is unchanged.
+
 ## v0.19.0 — 2026-06-22 (Regenerate a single section image)
 
 A built course now offers a per-section **"Regenerate image"** action on the job page that
