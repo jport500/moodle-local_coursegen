@@ -184,6 +184,13 @@ Its anatomy:
 **content and assessment activities**. The Introduction and Wrap-up are
 orientation and **don't count** toward completion.
 
+**Fixing one bad image.** AI image generation is hit-or-miss, and sometimes a
+single section's picture comes out wrong. On the job page, each section that has an
+image shows a **"Regenerate image"** button — it makes a fresh image for *just that
+section*, leaving the reading and the quiz/check exactly as they are. No need to
+rebuild the whole section to fix a picture. (If the new image still looks like the
+old one, refresh the course page.)
+
 ---
 
 ## 7. Review and publish

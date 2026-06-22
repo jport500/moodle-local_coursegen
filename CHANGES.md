@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.19.0 — 2026-06-22 (Regenerate a single section image)
+
+A built course now offers a per-section **"Regenerate image"** action on the job page that
+reruns only image generation against the section's existing hint — without rebuilding the
+section or touching its reading. See DECISIONS D33.
+
+- Previously the only fix for a bad image was regenerating the whole section (a fresh text
+  call that discards good reading to fix a picture). This replaces just the image.
+- Safe by construction: the image is replaced in place under the same filename, so the
+  section's reading prose and any inline knowledge-check token are left byte-for-byte
+  unchanged; the assessment, completion, and structure are untouched.
+- Gated by the same capability as section regenerate (`:generate` | `:reviewgate`),
+  POST + sesskey, on the built course only. Counts one image against the sub-cap; refuses
+  cleanly if the cap is exhausted; on a failed generation the existing image is kept.
+- The button appears only on sections that actually have an image.
+
 ## v0.18.2 — 2026-06-22 (Review-form UX: section header titles + global actions)
 
 Two small markup fixes in the blueprint review form (`edit_blueprint_form`). UI only.

@@ -73,6 +73,26 @@ $editurl = new moodle_url('/local/coursegen/edit.php', ['jobid' => $job->id]);
 // Mutating actions are POST + sesskey; deletion goes through a confirm screen.
 $action = optional_param('action', '', PARAM_ALPHA);
 
+// Regenerate one section's image on the built course (D33): reruns only image
+// generation against the stored hint, leaving the reading and assessment intact.
+// Same capability as the section-regenerate action (:generate | :reviewgate).
+if ($action === 'regenimage') {
+    require_sesskey();
+    if (!$canreview) {
+        require_capability('local/coursegen:generate', $context);
+    }
+    $section = required_param('section', PARAM_INT);
+    $ok = (new \local_coursegen\local\image_regenerator(
+        new \local_coursegen\local\ai\core_ai_image_client()
+    ))->regenerate($job, $section, $USER->id);
+    redirect(
+        $url,
+        get_string($ok ? 'regenimage_success' : 'regenimage_failed', 'local_coursegen', $section + 1),
+        null,
+        $ok ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_ERROR
+    );
+}
+
 if ($action === 'unarchive') {
     require_sesskey();
     job_manager::require_manage($context);
@@ -281,6 +301,21 @@ if ($blueprint) {
         }
         if ($meta) {
             echo html_writer::tag('p', implode(' · ', $meta), ['class' => 'text-muted']);
+        }
+
+        // Regenerate just this section's image, in place (D33) — only on a built
+        // course, for reviewers/builders, and only where an image actually exists.
+        if (
+            $phase === job_manager::PHASE_COMPLETE && $canreview
+                && \local_coursegen\local\image_regenerator::section_has_image($job, $i)
+        ) {
+            echo html_writer::start_tag('form', ['method' => 'post', 'action' => $url->out(false), 'class' => 'mb-3']);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'regenimage']);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'section', 'value' => $i]);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+            echo html_writer::empty_tag('input', ['type' => 'submit',
+                'value' => get_string('regenimage_button', 'local_coursegen'), 'class' => 'btn btn-sm btn-secondary']);
+            echo html_writer::end_tag('form');
         }
     }
 }

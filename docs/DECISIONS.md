@@ -1188,3 +1188,51 @@ verified-floor cases (the thing this decision exists to stop).
 **Revisit if.** A dependency's API surface coursegen relies on changes (re-establish the
 minimum), or an earlier dependency version is deliberately tested (lower the floor to that
 proven point).
+
+## D33 — Regenerate one section's image in place, reusing the stored hint
+
+**Decision.** A built course gets a per-section **"Regenerate image"** action on the job
+page that reruns ONLY image generation against the section's existing stored hint —
+leaving the reading prose and the assessment untouched. It fixes the expensive-only
+recovery for a bad image (previously: regenerate the whole section, a fresh text call that
+discards good reading to fix a picture). The hint is REUSED; no hint-editing in v1.
+
+**The path (forced by a verified fact).** The generated reading prose is NOT recoverable
+anywhere except inside the materialized label: `draft_reading`'s output goes only into the
+section's `mod_label` intro HTML (beside the image and any `{knowledgecheck}` token), and
+the blueprint stores only the *inputs* (summary, objectives), not the prose. So a "rebuild
+the label from its parts" approach (Path B) is impossible — the parts aren't separately
+stored. The honest path is in-place replacement (Path A).
+
+**Zero-surgery in-place swap.** The image is a file in the reading label's `mod_label/intro`
+filearea, referenced by `@@PLUGINFILE@@/<filename>` in `label.intro`. Regeneration writes
+the new image under the SAME filename, so the label HTML is **never touched** and the
+reading prose + the `{knowledgecheck}` token survive **byte-for-byte by construction** —
+not by careful regex. This is strictly safer than editing the `<img>` tag.
+
+- **Mechanism (`image_regenerator`, mirrors `section_regenerator`):** resolve job → course;
+  blueprint section i → course section i+1 (intro at section 0, D25) → the reading label →
+  its single intro image file; regenerate via the shared `materializer::section_image_prompt`
+  wrapper (D30, extracted so the wording can't drift); replace the file in place; log one
+  image against the sub-cap.
+- **Trigger:** a POST `action=regenimage` on the job page (`view.php`, `PHASE_COMPLETE`
+  only — images exist only after materialize), sesskey + the same capability as section
+  regenerate (`:generate` | `:reviewgate`). A per-section button appears only where an
+  image file is actually present.
+- **Guardrails:** the reading and the token are never touched (structural); the assessment,
+  completion, and section structure are untouched; image sub-cap respected (refuse cleanly
+  if exhausted); on generation failure the existing image and label are left exactly as-is.
+
+**Scope (v1).** Targets the common case — replacing an existing image. A section flagged
+for an image whose generation FAILED at materialize (no file) would need inserting an
+`<img>` into `label.intro` (HTML surgery); deferred — that section simply offers no button.
+Alt text stays as originally generated (the hint is reused, so it still fits); the
+pluginfile URL is unchanged, so a hard refresh may be needed to see the new image.
+
+**Rejected.** Whole-section regenerate as the only recovery (expensive, discards good
+reading); rebuilding the label from recovered parts (Path B — impossible, prose isn't
+stored separately); editing the `<img>` tag in `label.intro` (riskier than reusing the
+filename); hint-editing in v1 (out of scope — reuse the stored hint).
+
+**Revisit if.** Operators want to edit the hint before regenerating, or to add an image to
+a section that has none (the deferred flagged-but-failed / opt-in-after-the-fact case).

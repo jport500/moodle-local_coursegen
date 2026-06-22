@@ -517,6 +517,22 @@ PROMPT;
     }
 
     /**
+     * Wrap a section image hint so the image model produces a clean, text-free
+     * illustration rather than a labeled infographic — the bare hint (and
+     * "diagram"-flavoured hints) drove garbled, truncated multi-column outputs
+     * (D30). The image model garbles rendered text, so we steer away from any text
+     * or charts. Shared with the image regenerator (D33) so the wording can't drift.
+     *
+     * @param string $hint The section image hint (or title fallback).
+     * @return string The wrapped image prompt.
+     */
+    public static function section_image_prompt(string $hint): string {
+        return "A clean, professional illustration of {$hint}. Illustrative or "
+            . "photographic style, depicting the subject. No text, no words, no letters, "
+            . "no labels, no captions, and no charts, diagrams, or infographics.";
+    }
+
+    /**
      * Generate an image for a flagged section, attach it to a draft area, and
      * return the embedding HTML (with generated alt text). Returns '' on failure.
      *
@@ -530,14 +546,11 @@ PROMPT;
         global $USER;
         $hint = $section['image']['prompthint'] !== '' ? $section['image']['prompthint'] : $section['title'];
 
-        // Wrap the hint so the image model produces a clean, text-free illustration
-        // rather than a labeled infographic — the bare hint (and "diagram"-flavoured
-        // hints) drove garbled, truncated multi-column outputs (D30). The image
-        // model garbles rendered text, so we steer away from any text or charts.
-        $prompt = "A clean, professional illustration of {$hint}. Illustrative or "
-            . "photographic style, depicting the subject. No text, no words, no letters, "
-            . "no labels, no captions, and no charts, diagrams, or infographics.";
-        $result = $this->imageclient->generate_image($prompt, $context, (int) $job->userid);
+        $result = $this->imageclient->generate_image(
+            self::section_image_prompt($hint),
+            $context,
+            (int) $job->userid
+        );
         $this->log(
             $job,
             self::TIER_IMAGE,
