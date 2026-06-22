@@ -140,6 +140,13 @@ add a section at the end** (handy when you click *Add section*), or type a numbe
 to **place it at that position** — the others shift down, so typing `3` makes it
 the third section. Positions are tidied up to 1, 2, 3… when you save.
 
+**About image hints.** The image hint works best as an **illustrative subject** —
+a scene or object that represents the section (e.g. *"a warehouse worker wearing
+a hard hat and safety vest"*). AI image generators are poor at rendering text and
+tables, so avoid asking for a **chart, diagram, comparison, or infographic** — those
+come out garbled. Put any data, steps, or comparisons in the section's **reading
+text**, where it stays accurate, and let the image stay decorative.
+
 **Regenerate a section.** Each section has a **Regenerate** button. If a section
 is off, you can rewrite it by hand, or tighten its summary/objectives and
 regenerate to get a fresh draft that follows your edits.

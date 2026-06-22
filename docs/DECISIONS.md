@@ -1044,3 +1044,46 @@ guaranteed semantics).
 
 **Revisit if.** Drag-and-drop reordering replaces the numeric field, or operators want a
 different collision rule.
+
+## D30 — Steer generated images to clean, text-free illustrations
+
+**Decision.** Section images are steered toward clean, text-free illustrations rather than
+labeled infographics, fixing reports of garbled (mis-rendered) text and truncated
+(content clipped) images. Two prompt-layer levers, no parameter or display change:
+
+- **Image-prompt wrap (materializer).** The per-section image prompt no longer sends the
+  hint bare. It wraps it: *"A clean, professional illustration of {hint}. Illustrative or
+  photographic style, depicting the subject. No text, no words, no letters, no labels, no
+  captions, and no charts, diagrams, or infographics."* (The course thumbnail path already
+  wrapped its prompt; the section path was the bare one.)
+- **Hint contract (blueprint synthesis AND section regeneration).** The image field's
+  guidance changed from `"diagram idea or empty"` to *"an illustrative subject, not a chart
+  or infographic, or empty"*. The word "diagram" — which actively pulled the reasoning
+  model toward labeled-infographic hints like "PPE categories overview diagram" — is
+  removed from both prompts.
+
+**Why.** The image model garbles rendered text and overflows dense multi-column layouts.
+All three levers pointed at infographics: the contract literally said "diagram", the
+materializer sent that hint bare with no counter-framing, and there was nothing asking for
+a text-free illustration. Display was already innocent — `img-fluid` (no crop) and a
+`square` request — so the truncation was the model overflowing its own canvas, i.e. a
+prompt problem, not a sizing one.
+
+**`style` left as-is ('vivid').** Verified that the configured OpenAI image provider's
+`create_request_object` never reads the action's `style` parameter (grep-confirmed across
+`ai/provider/openai`), so `'vivid' -> 'natural'` would be a no-op for this deployment.
+Changing it would imply an effect that doesn't exist; the prompt is the only effective
+lever, so all steering lives there. `aspectratio: 'square'` and the `img-fluid` display
+are unchanged (your trace cleared both).
+
+**Evidence.** Real-transport: the worst-case hint "PPE categories comparison" — which
+previously produced a garbled, truncated infographic — returned a clean, text-free
+photographic illustration (1024x1024, in-frame, no labels) on gpt-image-1.5.
+
+**Rejected.** Flipping `style` to `'natural'` (inert for the active provider — theater);
+changing the aspect ratio or adding a display crop (not the cause); post-processing to
+strip text (the model shouldn't be asked to render text at all).
+
+**Revisit if.** A provider that *does* honor `style` becomes the image tier (then revisit
+'natural'), or operators legitimately need labeled diagrams (would be a separate,
+diagram-capable path, not the illustration path).

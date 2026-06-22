@@ -36,6 +36,9 @@ class stub_image_client implements image_client {
     /** @var int Number of generate_image() calls made. */
     private int $calls = 0;
 
+    /** @var string[] Prompts received, in order. */
+    private array $prompts = [];
+
     /**
      * Configure the stub.
      *
@@ -55,6 +58,7 @@ class stub_image_client implements image_client {
      */
     public function generate_image(string $prompt, \context $context, int $userid): image_result {
         $this->calls++;
+        $this->prompts[] = $prompt;
         if (!$this->succeed) {
             return new image_result(success: false, provider: 'stubimageprovider', error: 'stub failure');
         }
@@ -82,6 +86,15 @@ class stub_image_client implements image_client {
      */
     public function call_count(): int {
         return $this->calls;
+    }
+
+    /**
+     * The prompts received so far, in order.
+     *
+     * @return string[]
+     */
+    public function prompts(): array {
+        return $this->prompts;
     }
 
     /**

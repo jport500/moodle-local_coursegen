@@ -521,7 +521,14 @@ PROMPT;
         global $USER;
         $hint = $section['image']['prompthint'] !== '' ? $section['image']['prompthint'] : $section['title'];
 
-        $result = $this->imageclient->generate_image($hint, $context, (int) $job->userid);
+        // Wrap the hint so the image model produces a clean, text-free illustration
+        // rather than a labeled infographic — the bare hint (and "diagram"-flavoured
+        // hints) drove garbled, truncated multi-column outputs (D30). The image
+        // model garbles rendered text, so we steer away from any text or charts.
+        $prompt = "A clean, professional illustration of {$hint}. Illustrative or "
+            . "photographic style, depicting the subject. No text, no words, no letters, "
+            . "no labels, no captions, and no charts, diagrams, or infographics.";
+        $result = $this->imageclient->generate_image($prompt, $context, (int) $job->userid);
         $this->log(
             $job,
             self::TIER_IMAGE,

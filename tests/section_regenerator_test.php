@@ -75,6 +75,25 @@ final class section_regenerator_test extends \advanced_testcase {
     }
 
     /**
+     * The regen prompt's image-hint contract asks for an illustrative subject,
+     * not a "diagram" (D30) — matching the blueprint synthesis contract.
+     *
+     * @return void
+     */
+    public function test_regen_image_hint_contract_is_illustrative(): void {
+        $this->resetAfterTest();
+        $job = $this->job_with_blueprint(job_manager::STATUS_AWAITING_REVIEW);
+
+        $stub = new stub_text_client([$this->ok($this->section_json('Rewritten'))]);
+        (new section_regenerator($stub))->regenerate($job, 0, 2);
+        $prompt = $stub->prompts()[0];
+
+        $this->assertStringContainsString('"prompthint"', $prompt);
+        $this->assertStringContainsString('illustrative subject', $prompt);
+        $this->assertStringNotContainsString('diagram idea', $prompt);
+    }
+
+    /**
      * Regenerating on an approved job reopens it for re-approval.
      *
      * @return void

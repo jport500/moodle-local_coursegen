@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.17.2 — 2026-06-22 (Fix: steer images to text-free illustrations)
+
+Section images were coming back garbled (mis-rendered text) and truncated (clipped),
+because all three prompt levers pointed at labeled infographics. See DECISIONS D30.
+
+- The per-section image prompt now wraps the hint with text-free illustration framing
+  ("A clean, professional illustration of {hint}… No text… no charts, diagrams, or
+  infographics") instead of sending the hint bare.
+- The blueprint and section-regeneration prompts no longer ask for a "diagram idea" for
+  the image hint — they ask for an illustrative subject, not a chart or infographic.
+- No parameter or display change: `style` is left as-is (verified inert for the configured
+  OpenAI provider — it never reads it), and the square aspect ratio + no-crop display were
+  not the cause.
+- Real-transport check: the worst-case "PPE categories comparison" hint now returns a
+  clean, text-free photographic illustration instead of a garbled infographic.
+
 ## v0.17.1 — 2026-06-20 (Fix: review-gate section ordering)
 
 Adding a section in the review gate and saving with the Order field blank put it at the

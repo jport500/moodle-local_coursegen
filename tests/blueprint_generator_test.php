@@ -150,6 +150,26 @@ final class blueprint_generator_test extends \advanced_testcase {
     }
 
     /**
+     * The image-hint contract asks for an illustrative subject, not a "diagram"
+     * (D30) — the old wording drove labeled-infographic hints.
+     *
+     * @return void
+     */
+    public function test_image_hint_contract_is_illustrative_not_diagram(): void {
+        $this->resetAfterTest();
+        $job = $this->extracted_job(['A short paragraph about widgets and gears.']);
+
+        $stub = new stub_text_client([$this->ok($this->blueprint_json())]);
+        (new blueprint_generator($stub))->generate_for_job($job);
+        $prompt = $stub->prompts()[0];
+
+        // The image field still exists, but no longer invites a "diagram".
+        $this->assertStringContainsString('"prompthint"', $prompt);
+        $this->assertStringContainsString('illustrative subject', $prompt);
+        $this->assertStringNotContainsString('diagram idea', $prompt);
+    }
+
+    /**
      * Length enforcement (D26 Fix 1): a first blueprint whose section count misses
      * the depth range triggers exactly one re-prompt, and the in-range retry is the
      * version that gets stored.

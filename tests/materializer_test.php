@@ -153,6 +153,38 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * The section image hint is wrapped with text-free illustration framing
+     * (D30) — not sent bare — so even an infographic-flavoured hint steers the
+     * model toward a clean illustration.
+     *
+     * @return void
+     */
+    public function test_section_image_prompt_steers_text_free(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            [
+                'title' => 'PPE',
+                'summary' => 's',
+                'image' => ['generate' => true, 'prompthint' => 'PPE categories comparison'],
+                'assessment' => ['type' => 'none'],
+            ],
+        ]);
+
+        $image = new stub_image_client(true);
+        $this->assertTrue((new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job));
+
+        // The first image call is the section image (the thumbnail, if any, follows).
+        $prompt = $image->prompts()[0];
+        // The hint is wrapped, not sent bare.
+        $this->assertNotSame('PPE categories comparison', $prompt);
+        $this->assertStringContainsString('illustration of PPE categories comparison', $prompt);
+        // The no-text / no-chart framing is present.
+        $this->assertStringContainsString('No text', $prompt);
+        $this->assertStringContainsString('no charts, diagrams, or infographics', $prompt);
+    }
+
+    /**
      * A text-generation failure is tolerated and logged; the course completes.
      *
      * @return void

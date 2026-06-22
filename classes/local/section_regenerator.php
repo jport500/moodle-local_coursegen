@@ -168,7 +168,7 @@ Respond with ONLY a JSON object (no prose, no code fences) of this shape:
   "title": "section title",
   "objectives": ["learning objective", "..."],
   "summary": "what this section teaches",
-  "image": {"generate": true or false, "prompthint": "diagram idea or empty"},
+  "image": {"generate": true or false, "prompthint": "an illustrative subject, not a chart or infographic, or empty"},
   "assessment": {"type": "knowledgecheck" or "none", "questioncount": integer, "notes": "optional"}
 }
 
