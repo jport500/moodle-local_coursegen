@@ -1,4 +1,4 @@
-# local_coursegen — Design Spec (as-built, v0.16.2)
+# local_coursegen — Design Spec (as-built, v0.17.1)
 
 AI course-builder for LMS Light. Generates real Moodle courses from
 uploaded materials or a topic prompt, composing the existing plugin stack.
@@ -137,7 +137,10 @@ length/depth (D26).
 - **Capability tiers** declared by the plugin, mapped to providers per
   tenant:
   - `reasoning` — blueprint generation (low volume, high leverage). The
-    operator's audience/length targets are woven into this prompt (D26).
+    operator's audience/length targets are woven into this prompt (D26), and the
+    job topic is injected as a labeled COURSE FOCUS directive — separate from the
+    source material and surviving map-reduce — so it steers scope and framing
+    while the documents stay the authority for content (D28).
   - `drafting` — bulk per-section reading content (higher volume,
     cost-sensitive). The audience level pitches this prose (D26).
   - `image` — diagram/illustration generation.
@@ -253,3 +256,6 @@ the authoritative per-phase history; in brief:
   thumbnail (D25; the intro was later corrected to live in section 0).
 - **P20** — operator-controlled course depth (audience level + length/depth;
   D26), plus the read-then-assess section ordering (D27).
+- **Post-P20 follow-ups** — the job topic injected as a labeled steering
+  directive separate from source material (D28); review-gate section ordering
+  fixed so a blank Order adds at the end and positions normalize to 1…N (D29).

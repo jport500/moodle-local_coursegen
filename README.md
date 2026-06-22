@@ -13,13 +13,14 @@ first for the product and deployment model.
 
 ## Status
 
-**Beta (v0.16.2).** The full pipeline is implemented: source ingestion and
+**Beta (v0.17.1).** The full pipeline is implemented: source ingestion and
 extraction, blueprint generation, the review gate with per-section
 regeneration, materialization into a hidden format_pathway course (intro +
 wrap-up bookends, per-section reading, optional images, a course thumbnail),
 assessments (inline knowledge checks and graded quizzes), and
 completion-to-criteria wiring. Operators steer each run with audience-level and
-length/depth controls. See [CHANGES.md](CHANGES.md) for the per-phase history.
+length/depth controls, and with a topic that focuses generation against the
+uploaded source material. See [CHANGES.md](CHANGES.md) for the per-phase history.
 
 ## Requirements
 
