@@ -88,6 +88,8 @@ $canapprove = ($job->status === job_manager::STATUS_AWAITING_REVIEW)
 $form = new edit_blueprint_form($pageurl->out(false), [
     'sectioncount' => max(1, count($sections)),
     'canapprove' => $canapprove,
+    // Section titles for the collapsible headers (Item 1); 0-indexed by position.
+    'sectiontitles' => array_map(static fn(array $s): string => (string) $s['title'], array_values($sections)),
 ]);
 
 // Prefill from the current blueprint.

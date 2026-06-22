@@ -76,7 +76,10 @@ class edit_blueprint_form extends \moodleform {
         $repeat[] = $mform->createElement(
             'header',
             'sectionheader',
-            get_string('section_heading', 'local_coursegen')
+            // The {no} token is replaced with the row number by repeat_elements; a
+            // loaded section's title is appended after repeat_elements below (Item 1),
+            // so a blank/just-added row keeps the bare "Section N".
+            get_string('section_heading', 'local_coursegen') . ' {no}'
         );
         $repeat[] = $mform->createElement(
             'text',
@@ -144,7 +147,8 @@ class edit_blueprint_form extends \moodleform {
             'sectionimagehint' => ['type' => PARAM_TEXT],
             'sectionassesstype' => ['type' => PARAM_ALPHA],
             'sectionassesscount' => ['type' => PARAM_INT],
-            'sectiondelete' => ['expanded' => false],
+            // Note: no 'expanded' opt here — it applies only to header elements;
+            // on the delete submit button it was a no-op that emitted a debugging.
         ];
 
         $count = max(1, (int) ($this->_customdata['sectioncount'] ?? 1));
@@ -158,6 +162,28 @@ class edit_blueprint_form extends \moodleform {
             get_string('section_addmore', 'local_coursegen'),
             true,
         );
+
+        // Item 1: label each loaded section's collapsible header "Section N: <title>"
+        // so the rows are distinguishable when collapsed. The {no} template already
+        // supplied the number; this appends the title from customdata (reload-time,
+        // no JS). A blank title (e.g. a just-added row) keeps the bare "Section N".
+        foreach ((array) ($this->_customdata['sectiontitles'] ?? []) as $i => $title) {
+            $title = trim((string) $title);
+            if ($title === '' || !$mform->elementExists("sectionheader[$i]")) {
+                continue;
+            }
+            $mform->getElement("sectionheader[$i]")->setValue(get_string(
+                'section_heading_titled',
+                'local_coursegen',
+                (object) ['no' => $i + 1, 'title' => format_string($title)]
+            ));
+        }
+
+        // Item 2: a fresh, always-expanded region for the whole-blueprint actions, so
+        // Save/Approve/Add section are never hidden inside the last section's collapsed
+        // fieldset. Per-section Delete stays inside the repeat (it is per-section).
+        $mform->addElement('header', 'actionsheader', get_string('form_actions', 'local_coursegen'));
+        $mform->setExpanded('actionsheader', true);
 
         $buttonarray = [];
         $buttonarray[] = $mform->createElement(

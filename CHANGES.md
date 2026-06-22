@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.18.2 — 2026-06-22 (Review-form UX: section header titles + global actions)
+
+Two small markup fixes in the blueprint review form (`edit_blueprint_form`). UI only.
+
+- **Section headers show the title.** Each collapsible section header now reads
+  "Section N: <title>" instead of a bare, repeated "Section", so rows are
+  distinguishable when collapsed. The number comes from the repeat position; the title
+  is passed in via form customdata (reload-time, no JS). A blank/just-added section
+  falls back to a bare "Section N" with no dangling colon.
+- **Global actions no longer hide inside the last section.** Save / Approve / Add section
+  are whole-blueprint actions but were rendering inside the last section's collapsible
+  fieldset (hidden when it was collapsed). They now sit in their own always-expanded
+  region below all sections. Per-section "Delete this section" stays per-section.
+- Also removed a pre-existing no-op `expanded` repeat option on the delete button that
+  emitted a developer debugging notice.
+
 ## v0.18.1 — 2026-06-22 (Reconcile dependency floors to reality)
 
 Metadata + docs only; no functional change. See DECISIONS D32.
