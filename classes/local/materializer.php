@@ -221,6 +221,15 @@ class materializer {
         // activities exist.
         self::configure_course_completion((int) $course->id);
 
+        // Clear the orphan flag as the deliberate LAST step of a successful build
+        // (D31). A re-materialize ran cleanup_partial_course earlier, whose
+        // delete_course() fired course_deleted — and our synchronous observer set
+        // timecoursedeleted and nulled courseid on this very job. Clearing it here,
+        // after that event has fired and after courseid was re-set (:145), makes
+        // the clear reliably win the race so a rebuilt job is not left mis-flagged
+        // as "course deleted".
+        $DB->set_field('coursegen_job', 'timecoursedeleted', null, ['id' => $job->id]);
+
         $this->set_status($job, job_manager::STATUS_COMPLETE);
         return true;
     }
@@ -1183,22 +1192,45 @@ PROMPT;
     }
 
     /**
+     * Tear down a generated course: the shared MECHANISM (D31) for removing a
+     * course this plugin created, used by the internal rebuild cleanup, the
+     * operator's opt-in course deletion (job_manager), and the privacy erase path.
+     *
+     * Mechanism only — NO capability check, NO confirm, NO learner-state gate
+     * (those belong to the operator path, not here). Deletes the course via
+     * delete_course(); the quizgenpro question categories banked for the course
+     * live in a question-bank MODULE context inside the course, so they (and their
+     * entries, versions, and questions) are torn down by the course-context cascade
+     * — there is no separate category to sweep, and an idnumber sweep would risk
+     * other courses' categories (D31). A no-op if the course no longer exists.
+     *
+     * @param int $courseid The generated course id.
+     * @return void
+     */
+    public static function teardown_generated_course(int $courseid): void {
+        global $DB, $CFG;
+        if (empty($courseid) || !$DB->record_exists('course', ['id' => $courseid])) {
+            return;
+        }
+        require_once($CFG->dirroot . '/course/lib.php');
+        delete_course($courseid, false);
+    }
+
+    /**
      * Delete a previously-created (partial) course for the job, if any, and
      * clear the recorded courseid. Safe because generated courses are always
-     * hidden and never learner-visible.
+     * hidden and never learner-visible. Routes through the shared teardown
+     * mechanism (D31).
      *
      * @param \stdClass $job The job (courseid cleared in place).
      * @return void
      */
     private function cleanup_partial_course(\stdClass $job): void {
-        global $DB, $CFG;
+        global $DB;
         if (empty($job->courseid)) {
             return;
         }
-        require_once($CFG->dirroot . '/course/lib.php');
-        if ($DB->record_exists('course', ['id' => $job->courseid])) {
-            delete_course($job->courseid, false);
-        }
+        self::teardown_generated_course((int) $job->courseid);
         $job->courseid = null;
         $DB->set_field('coursegen_job', 'courseid', null, ['id' => $job->id]);
     }
