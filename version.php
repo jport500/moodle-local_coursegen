@@ -25,19 +25,32 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026062300;
+$plugin->version = 2026062301;
 // Verified floor: only Moodle 5.2 (2026042000) on PHP 8.3 has been exercised. The
 // code uses no 5.2-only APIs, but the declared floor reflects what is actually
 // tested rather than an unverified 5.1/PHP 8.2 claim (see docs/DECISIONS D19).
 $plugin->requires = 2026042000;
 $plugin->maturity = MATURITY_BETA;
-$plugin->release = 'v0.18.0';
+$plugin->release = 'v0.18.1';
+// Dependency floors reconciled to reality (DECISIONS D32). Each is either a real
+// minimum (the earliest version with the API surface coursegen calls) or a
+// "verified floor" (the demo2-exercised version, where a true historical minimum
+// could not be established) — mirroring the core requires honesty (D19). The prior
+// format_pathway (2025021586) and local_quizgenpro (2026012301) numbers were stale
+// guesses; both are below what is installed and could have allowed install against
+// a version missing an API we call.
 $plugin->dependencies = [
-    // Generated courses default to the format_pathway course format (DECISIONS D10).
-    'format_pathway' => 2025021586,
-    // Assessments are delegated to local_quizgenpro's API (DECISIONS D5, D10).
-    'local_quizgenpro' => 2026012301,
-    // Assessed sections are placed as formative knowledge checks (DECISIONS D15).
+    // Generated courses default to format_pathway and set its pathwayshowsection0
+    // course-format option (D10, D25). Real minimum: that option is present in
+    // 1.0.1 (2026052000), the earliest exercised release; verified e2e on 1.0.2.
+    'format_pathway' => 2026052000,
+    // Assessments are delegated to local_quizgenpro's exporter::export_to_question_bank
+    // (3-arg) and generator (D5, D10). Verified floor — the historical minimum for
+    // that API surface is not establishable, so pin to the tested v3.1.0.
+    'local_quizgenpro' => 2026051300,
+    // Assessed sections place a formative knowledge check via questions::add and the
+    // {knowledgecheck id=<uuid>} token (D15). Verified floor: matches the tested 1.0.2.
     'mod_knowledgecheck' => 2026051800,
+    // Renders the inline {knowledgecheck} token. Verified floor: matches the tested 1.0.0.
     'filter_knowledgecheck' => 2026051800,
 ];

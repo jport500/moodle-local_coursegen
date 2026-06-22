@@ -9,8 +9,10 @@ is in `CHANGES.md`. Read
 `github.com/jport500/lms-light-docs/blob/main/CONTEXT.md` first.
 
 Status: **as-built.** Verified against Moodle 5.2 (the exercised floor,
-`requires = 2026042000`; see DECISIONS D19). Where this spec and DECISIONS
-disagree, DECISIONS is authoritative.
+`requires = 2026042000`; see DECISIONS D19) and the reconciled dependency floors
+format_pathway ≥ 2026052000, local_quizgenpro ≥ 2026051300, mod_knowledgecheck ≥
+2026051800, filter_knowledgecheck ≥ 2026051800 (DECISIONS D32). Where this spec
+and DECISIONS disagree, DECISIONS is authoritative.
 
 ---
 

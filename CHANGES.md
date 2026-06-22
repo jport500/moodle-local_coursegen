@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.18.1 — 2026-06-22 (Reconcile dependency floors to reality)
+
+Metadata + docs only; no functional change. See DECISIONS D32.
+
+- `format_pathway`: `2025021586` → `2026052000`. The old number was stale and fictional
+  (2025-02 era; the real releases are 2026052000/2026060501). The new floor is a real
+  minimum — `pathwayshowsection0` is present in 1.0.1 (2026052000).
+- `local_quizgenpro`: `2026012301` → `2026051300`. The old number was an unverified guess
+  below the tested version; pinned to the exercised v3.1.0 as a verified floor.
+- `mod_knowledgecheck` / `filter_knowledgecheck`: unchanged (`2026051800`) — already
+  matched the tested versions; APIs confirmed present.
+- Moodle core `requires` unchanged (`2026042000`, D19).
+
+All floors are now at or below what is installed on demo2, so it still installs/upgrades
+cleanly; each is documented as a real minimum or a verified floor.
+
 ## v0.18.0 — 2026-06-22 (Job lifecycle: archive, opt-in course delete, orphan flag)
 
 The hub gains a job lifecycle. See DECISIONS D31.

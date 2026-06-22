@@ -1149,3 +1149,42 @@ orphaned job (hides the record the operator needs).
 **Revisit if.** A hard-purge-from-archive operator action is wanted (the mechanism — the
 teardown + child-row delete — already exists in the privacy path and can be surfaced), or
 bulk archive/restore from the hub is needed.
+
+## D32 — Reconcile declared dependency floors to reality (pre-pilot)
+
+**Decision.** The plugin's declared dependency versions in version.php are reconciled to
+honest floors — each is either a **real minimum** (the earliest version with the API
+surface coursegen actually calls) or a **verified floor** (the demo2-exercised version,
+where a true historical minimum could not be established) — mirroring the core `requires`
+honesty of D19. No functional code change; metadata + docs.
+
+| Dependency | Was | Now | Basis |
+|---|---|---|---|
+| format_pathway | 2025021586 | **2026052000** | Real minimum — `pathwayshowsection0` (D25) is present in 1.0.1 (2026052000), the earliest exercised release; verified end-to-end on 1.0.2 |
+| local_quizgenpro | 2026012301 | **2026051300** | Verified floor — the historical minimum for the 3-arg `exporter::export_to_question_bank` / `generator` surface is not establishable; pinned to the tested v3.1.0 |
+| mod_knowledgecheck | 2026051800 | 2026051800 | Verified floor — already matched the tested 1.0.2 (`questions::add`, the `uuid` field, the `{knowledgecheck id=<uuid>}` token all present) |
+| filter_knowledgecheck | 2026051800 | 2026051800 | Verified floor — already matched the tested 1.0.0 (renders the inline token) |
+| Moodle core (`requires`) | 2026042000 | 2026042000 | Verified floor (D19), unchanged |
+
+**Why.** A wrong floor is install-time poison: too high blocks install on a real tenant;
+too low (or fictional) lets it install against a dependency missing an API we call — the
+silent, worse failure. The prior `format_pathway => 2025021586` was a **stale fictional
+number**: it sits in the 2025-02 era, but format_pathway's real releases are 2026052000
+(1.0.1) and 2026060501 (1.0.2), a year later — no such release ever existed. The prior
+`local_quizgenpro => 2026012301` was an **unverified low guess** below the tested
+2026051300, with no confirmation the 3-arg exporter existed that early. Neither blocked
+install on demo2 (both were below what is installed), but both were dishonest floors.
+
+**Verified-floor caveat.** "Verified floor" means *tested*, not *proven minimal* — the
+dependency may well work at an earlier version, but we pin to what has actually been
+exercised rather than invent a lower number. This is the same discipline as D19 and the
+same class of bug as the early CONTEXT.md version error.
+
+**Rejected.** Pinning format_pathway to the current 2026060501 (1.0.1 demonstrably has the
+API, so 2026052000 is the honest minimum); leaving the stale 2025021586/2026012301 numbers
+(dishonest — could permit an API-missing install); inventing lower numbers for the
+verified-floor cases (the thing this decision exists to stop).
+
+**Revisit if.** A dependency's API surface coursegen relies on changes (re-establish the
+minimum), or an earlier dependency version is deliberately tested (lower the floor to that
+proven point).

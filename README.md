@@ -26,8 +26,11 @@ uploaded source material. See [CHANGES.md](CHANGES.md) for the per-phase history
 
 - Moodle 5.2 or later (`requires = 2026042000`; verified floor — see
   DECISIONS D19).
-- `format_pathway`, `local_quizgenpro`, and
-  `mod_knowledgecheck` + `filter_knowledgecheck` installed.
+- These plugins, at or above the reconciled dependency floors (DECISIONS D32):
+  - `format_pathway` ≥ `2026052000` (1.0.1).
+  - `local_quizgenpro` ≥ `2026051300` (v3.1.0).
+  - `mod_knowledgecheck` ≥ `2026051800` (v1.0.2).
+  - `filter_knowledgecheck` ≥ `2026051800` (v1.0.0).
 - At least one provider configured in the AI Providers subsystem (a text
   provider is required; an image provider is needed for section images).
 
