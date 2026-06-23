@@ -48,3 +48,43 @@ function local_coursegen_extend_navigation_category_settings(navigation_node $na
         new pix_icon('i/addblock', '')
     );
 }
+
+/**
+ * Add a "Course builder" item to a course's More (secondary) navigation — but only
+ * on courses the builder generated, for users who may build in that course's
+ * category (D35). It deep-links to the generating job's page (an additional door
+ * into an already-gated page: view.php re-resolves the job's context and gates).
+ *
+ * The builder capability is CONTEXT_COURSECAT, so it is re-checked in the JOB'S
+ * CATEGORY context (job->contextid) — NOT the course context the hook provides.
+ * A user who can edit the course but lacks builder access in the category must not
+ * see the item. A deleted course nulls courseid (the observer) and has no course
+ * page, so it never matches — hidden by construction.
+ *
+ * @param navigation_node $coursenode The course settings/secondary node.
+ * @param stdClass $course The course.
+ * @param context_course $coursecontext The course context (not used for gating; see above).
+ * @return void
+ */
+function local_coursegen_extend_navigation_course(
+    navigation_node $coursenode,
+    stdClass $course,
+    context_course $coursecontext
+) {
+    $job = \local_coursegen\local\job_manager::latest_job_for_course((int) $course->id);
+    if ($job === null) {
+        return; // Not a builder-generated course.
+    }
+    $categorycontext = \context::instance_by_id((int) $job->contextid, IGNORE_MISSING);
+    if (!$categorycontext || !\local_coursegen\local\job_manager::can_access($categorycontext)) {
+        return; // No builder access in the job's category.
+    }
+    $coursenode->add(
+        get_string('hubheading', 'local_coursegen'),
+        new moodle_url('/local/coursegen/view.php', ['jobid' => $job->id]),
+        navigation_node::TYPE_SETTING,
+        null,
+        'local_coursegen_view',
+        new pix_icon('i/addblock', '')
+    );
+}

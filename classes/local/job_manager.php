@@ -288,6 +288,20 @@ class job_manager {
     }
 
     /**
+     * The most recent job that produced a given course, or null if the course was
+     * not builder-generated. The `courseid` FK is non-unique (rebuilds can produce
+     * several jobs), so "most recent by id" makes the lookup deterministic (D35).
+     *
+     * @param int $courseid The course id.
+     * @return \stdClass|null The latest job row, or null.
+     */
+    public static function latest_job_for_course(int $courseid): ?\stdClass {
+        global $DB;
+        $jobs = $DB->get_records('coursegen_job', ['courseid' => $courseid], 'id DESC', '*', 0, 1);
+        return $jobs ? reset($jobs) : null;
+    }
+
+    /**
      * Whether the user may manage jobs (archive / opt-in course delete) in a
      * context — the :manage capability (D31).
      *
