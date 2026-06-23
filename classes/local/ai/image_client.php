@@ -36,7 +36,14 @@ interface image_client {
      * @param string $prompt The image prompt.
      * @param \context $context The context the request is made in.
      * @param int $userid The user the request is attributed to.
+     * @param string $aspectratio One of 'square' | 'landscape' | 'portrait' (D36);
+     *        defaults to 'square' so existing callers are unchanged.
      * @return image_result The outcome, including the draft image file.
      */
-    public function generate_image(string $prompt, \context $context, int $userid): image_result;
+    public function generate_image(
+        string $prompt,
+        \context $context,
+        int $userid,
+        string $aspectratio = 'square'
+    ): image_result;
 }

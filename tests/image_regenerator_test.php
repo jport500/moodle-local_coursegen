@@ -324,7 +324,12 @@ final class image_regenerator_test extends \advanced_testcase {
             }
 
             #[\Override]
-            public function generate_image(string $prompt, \context $context, int $userid): image_result {
+            public function generate_image(
+                string $prompt,
+                \context $context,
+                int $userid,
+                string $aspectratio = 'square'
+            ): image_result {
                 $draft = get_file_storage()->create_file_from_string([
                     'contextid' => \context_user::instance($userid)->id,
                     'component' => 'user', 'filearea' => 'draft',

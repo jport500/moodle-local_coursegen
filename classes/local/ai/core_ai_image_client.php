@@ -42,16 +42,27 @@ class core_ai_image_client implements image_client {
      * @param int $userid The user the request is attributed to.
      * @return image_result
      */
-    public function generate_image(string $prompt, \context $context, int $userid): image_result {
+    public function generate_image(
+        string $prompt,
+        \context $context,
+        int $userid,
+        string $aspectratio = 'square'
+    ): image_result {
         $manager = \core\di::get(\core_ai\manager::class);
         $providername = $this->resolve_provider_name($manager);
+
+        // The provider's calculate_size accepts only these three and throws on
+        // anything else, so clamp an unknown value to 'square' (D36).
+        if (!in_array($aspectratio, ['square', 'landscape', 'portrait'], true)) {
+            $aspectratio = 'square';
+        }
 
         $action = new \core_ai\aiactions\generate_image(
             contextid: $context->id,
             userid: $userid,
             prompttext: $prompt,
             quality: 'standard',
-            aspectratio: 'square',
+            aspectratio: $aspectratio,
             numimages: 1,
             style: 'vivid',
         );

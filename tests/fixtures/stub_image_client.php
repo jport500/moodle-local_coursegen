@@ -39,6 +39,9 @@ class stub_image_client implements image_client {
     /** @var string[] Prompts received, in order. */
     private array $prompts = [];
 
+    /** @var string[] Aspect ratios received, in order. */
+    private array $aspectratios = [];
+
     /**
      * Configure the stub.
      *
@@ -54,11 +57,18 @@ class stub_image_client implements image_client {
      * @param string $prompt The prompt.
      * @param \context $context The context.
      * @param int $userid The user id.
+     * @param string $aspectratio The requested aspect ratio.
      * @return image_result
      */
-    public function generate_image(string $prompt, \context $context, int $userid): image_result {
+    public function generate_image(
+        string $prompt,
+        \context $context,
+        int $userid,
+        string $aspectratio = 'square'
+    ): image_result {
         $this->calls++;
         $this->prompts[] = $prompt;
+        $this->aspectratios[] = $aspectratio;
         if (!$this->succeed) {
             return new image_result(success: false, provider: 'stubimageprovider', error: 'stub failure');
         }
@@ -95,6 +105,15 @@ class stub_image_client implements image_client {
      */
     public function prompts(): array {
         return $this->prompts;
+    }
+
+    /**
+     * The aspect ratios received so far, in order.
+     *
+     * @return string[]
+     */
+    public function aspectratios(): array {
+        return $this->aspectratios;
     }
 
     /**
