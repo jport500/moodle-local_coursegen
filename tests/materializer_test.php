@@ -849,6 +849,110 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * Opt-in OFF (default): no intro banner is generated and no format_pathway
+     * sectionimage file is written (D36).
+     *
+     * @return void
+     */
+    public function test_intro_banner_not_generated_when_off(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+        $this->assertEquals(0, (int) $DB->get_field('coursegen_job', 'headerbanner', ['id' => $job->id]));
+
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(true), new stub_quiz_client(true)))
+            ->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+        $this->assertCount(0, $this->banner_files($courseid));
+    }
+
+    /**
+     * Opt-in ON: a banner lands in format_pathway/sectionimage for section 0,
+     * pathwayshowimages is turned on, one image is logged, and the banner image was
+     * requested in 'landscape' (D36).
+     *
+     * @return void
+     */
+    public function test_intro_banner_generated_when_on(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+        $DB->set_field('coursegen_job', 'headerbanner', 1, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        $image = new stub_image_client(true);
+        $this->assertTrue((new materializer($this->text(), $image, new stub_quiz_client(true)))->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        // A banner file is in format_pathway's section-0 sectionimage filearea.
+        $this->assertCount(1, $this->banner_files($courseid));
+        // The course shows section images.
+        $this->assertEquals('1', course_get_format($courseid)->get_format_options()['pathwayshowimages']);
+        // The banner generation was logged once, and requested landscape.
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            "jobid = :j AND tier = 'image' AND outcome = 'success' AND imagecount = 1 AND "
+                . $DB->sql_like('detail', ':d'),
+            ['j' => $job->id, 'd' => 'intro header banner']
+        ));
+        $this->assertContains('landscape', $image->aspectratios());
+    }
+
+    /**
+     * Best-effort: with banner generation failing, the build still completes and
+     * leaves no banner — a failure is logged, materialize succeeds (D36).
+     *
+     * @return void
+     */
+    public function test_intro_banner_failure_is_best_effort(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Widgets', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+        $DB->set_field('coursegen_job', 'headerbanner', 1, ['id' => $job->id]);
+        $job = $DB->get_record('coursegen_job', ['id' => $job->id], '*', MUST_EXIST);
+
+        // A failing image client: every image call (incl. the banner) fails.
+        $this->assertTrue((new materializer($this->text(), new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job), 'the build must still complete when the banner fails');
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        $this->assertCount(0, $this->banner_files($courseid), 'no banner on failure');
+        $this->assertTrue($DB->record_exists_select(
+            'coursegen_log',
+            "jobid = :j AND outcome = 'failure' AND " . $DB->sql_like('detail', ':d'),
+            ['j' => $job->id, 'd' => 'intro header banner%']
+        ));
+    }
+
+    /**
+     * The files in format_pathway's section-0 sectionimage filearea for a course.
+     *
+     * @param int $courseid The course id.
+     * @return \stored_file[]
+     */
+    private function banner_files(int $courseid): array {
+        global $DB;
+        $section0id = (int) $DB->get_field('course_sections', 'id', ['course' => $courseid, 'section' => 0]);
+        return get_file_storage()->get_area_files(
+            \context_course::instance($courseid)->id,
+            'format_pathway',
+            'sectionimage',
+            $section0id,
+            'id',
+            false
+        );
+    }
+
+    /**
      * The completion tracking of the (single) label in a given course section.
      *
      * @param int $courseid The course id.

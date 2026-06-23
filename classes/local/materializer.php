@@ -216,6 +216,13 @@ class materializer {
             $this->generate_course_thumbnail($job, $course, $coursecontext, $blueprint);
         }
 
+        // Optional AI intro header banner on section 0 (D36), opt-in per job, gated
+        // by the image sub-cap (live, so the thumbnail above is already counted).
+        // Best-effort: never fails the build.
+        if (!empty($job->headerbanner) && spend_governor::image_remaining() > 0) {
+            $this->generate_intro_banner($job, $course, $coursecontext, $blueprint);
+        }
+
         // Require completion of every tracked activity so course completion fires
         // (D22). The untracked bookends contribute nothing. Runs after all
         // activities exist.
@@ -488,6 +495,92 @@ class materializer {
     }
 
     /**
+     * Generate the optional AI intro header banner and set it as format_pathway's
+     * section-0 header image (D36). Best-effort and skip-not-fail: a generation,
+     * file-write, or format-option failure is logged and the build continues — the
+     * course must never fail to build because the banner couldn't be set. Counts as
+     * one image against the sub-cap (the caller gates on opt-in + remaining budget).
+     *
+     * Writes into format_pathway's own section-image filearea (course context,
+     * component 'format_pathway', filearea 'sectionimage', itemid = section-0 DB id)
+     * under a fresh unique filename (cache-bust hygiene, D34), and turns on the
+     * course-level pathwayshowimages option explicitly so a tenant default of '0'
+     * can't silently hide the banner (the D25 lesson).
+     *
+     * @param \stdClass $job The job.
+     * @param \stdClass $course The course.
+     * @param \context $coursecontext The course context.
+     * @param blueprint $blueprint The blueprint (for the title).
+     * @return void
+     */
+    private function generate_intro_banner(
+        \stdClass $job,
+        \stdClass $course,
+        \context $coursecontext,
+        blueprint $blueprint
+    ): void {
+        global $DB;
+        $result = $this->imageclient->generate_image(
+            self::banner_prompt($blueprint->get_title()),
+            $coursecontext,
+            (int) $job->userid,
+            'landscape'
+        );
+        $this->log(
+            $job,
+            self::TIER_IMAGE,
+            'generate_image',
+            $result->provider,
+            $result->model,
+            null,
+            null,
+            $result->success ? 1 : 0,
+            $result->success ? 'intro header banner' : 'intro header banner failed: ' . $result->error,
+            $result->success ? 'success' : 'failure'
+        );
+        if (!$result->success || $result->draftfile === null) {
+            return;
+        }
+
+        // Best-effort: swallow any failure of the cross-plugin file write or the
+        // format-option set, so the course still materializes fine without the
+        // banner. Deliberately broad — any error here must not fail the build.
+        try {
+            $section0 = $DB->get_record(
+                'course_sections',
+                ['course' => $course->id, 'section' => 0],
+                'id',
+                MUST_EXIST
+            );
+            $ext = pathinfo($result->draftfile->get_filename(), PATHINFO_EXTENSION) ?: 'png';
+            $fs = get_file_storage();
+            $fs->delete_area_files($coursecontext->id, 'format_pathway', 'sectionimage', (int) $section0->id);
+            $fs->create_file_from_storedfile([
+                'contextid' => $coursecontext->id,
+                'component' => 'format_pathway',
+                'filearea' => 'sectionimage',
+                'itemid' => (int) $section0->id,
+                'filepath' => '/',
+                'filename' => bin2hex(random_bytes(8)) . '.' . $ext,
+            ], $result->draftfile);
+            course_get_format($course)->update_course_format_options((object) ['pathwayshowimages' => '1']);
+        } catch (\Throwable $e) {
+            $this->log(
+                $job,
+                self::TIER_IMAGE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                'intro header banner not set: ' . $e->getMessage(),
+                audit_log::FAILURE
+            );
+        }
+    }
+
+    /**
      * Generate reading content (drafting tier) for a section as an HTML fragment.
      *
      * @param \stdClass $job The job.
@@ -530,6 +623,22 @@ PROMPT;
         return "A clean, professional illustration of {$hint}. Illustrative or "
             . "photographic style, depicting the subject. No text, no words, no letters, "
             . "no labels, no captions, and no charts, diagrams, or infographics.";
+    }
+
+    /**
+     * The intro title-banner prompt (D36) — the OPPOSITE of section_image_prompt:
+     * a wide header banner that WANTS the course title rendered as clean, legible
+     * text. AI text rendering is imperfect, which is why the banner is regenerable.
+     * Shared with the banner regenerator so the wording can't drift.
+     *
+     * @param string $title The course title.
+     * @return string
+     */
+    public static function banner_prompt(string $title): string {
+        return "A wide, professional title banner for an online course. Render the course "
+            . "title \"{$title}\" as large, clean, clearly legible text, centered, spelled "
+            . "exactly, over a simple complementary background suited to the subject. A "
+            . "horizontal header banner — uncluttered, high-contrast, easy to read.";
     }
 
     /**
