@@ -1278,3 +1278,61 @@ keeping the same filename (the direct cause of the symptom).
 **Revisit if.** Moodle gains a revisionable pluginfile URL for module intro files (a
 cleaner bump than a filename change), or the regenerate moves to a background task (a
 separate concern — the synchronous inline call is still a slow-request UX issue, deferred).
+
+## D35 — Two better entry points to the course builder (additive navigation)
+
+**Decision.** Add two doorways into the builder without changing the category-context model
+underneath (every build still happens in a category). Both are *additional doors into
+already-gated rooms* — neither bypasses the existing per-category access checks; the pages
+they link to (`index.php`, `view.php`) re-resolve their context and call `require_access`.
+
+**Surface 2 — a "Course builder" item in a course's More (secondary) navigation.**
+`local_coursegen_extend_navigation_course` (the **legacy** `extend_navigation_course`
+callback — still dispatched in 5.2 at `settings_navigation.php:602`, and consistent with
+the plugin's existing `extend_navigation_category_settings`). The item shows ONLY when both
+(a) a job exists for this `courseid`, and (b) the user can build in the **job's category
+context**. Critical: the builder capability is `CONTEXT_COURSECAT`, so it is re-checked
+against `job->contextid`, NOT the `context_course` the hook hands us — a teacher with
+course-edit rights but no builder access in the category must not see it. The item deep-links
+to the generating job: `view.php?jobid=<latest job for this course>`.
+- **Latest-by-id determinism:** `coursegen_job.courseid` is a non-unique FK (rebuilds can
+  produce several jobs; the `course_deleted` observer already loops), so the link resolves
+  to the most recent job by id (`job_manager::latest_job_for_course`). In normal flow it's
+  1:1; this just makes the multi-job case well-defined.
+- **Lifecycle:** an archived job still shows the item (its record is *more* relevant when
+  archived; `view.php` renders the archived state). A deleted course nulls `courseid` (the
+  observer) and has no course page, so it never matches — hidden by construction.
+
+**Surface 1 — a Site administration > Courses link → a category-picker landing page.**
+A new `landing.php` (the hub's `index.php` requires a `contextid` and can't serve this).
+It lists the categories the operator can build in via `job_manager::buildable_categories`
+(the SAME per-category `can_access` the hub uses — one definition of "can build here"),
+each linking to `index.php?contextid=…`; an operator with builder rights in zero categories
+sees a clear empty state, not an error. Registered as an `admin_externalpage` under the
+existing `courses` admin category.
+- **Coarse-cap-plus-landing-gate split:** `admin_externalpage::check_access()` checks a
+  static capability in a fixed (system) context, so it CANNOT gate on the per-category
+  builder cap. The menu item is gated coarsely on **`moodle/course:create`** (system) — the
+  standard "creates courses" capability, broad enough that plausible builders see the door,
+  inventing no new cap. The **landing page is the real gate** (per-category `can_access`).
+  - **Known trade-off:** a *category-only* course creator (who has `moodle/course:create`
+    only inside a category, not at system) won't see this top-level admin link — but they
+    still have the per-course More item (Surface 2) and the category-settings entry point.
+    The coarse cap intentionally errs toward the admin audience for an admin-area menu.
+
+**The invariant (both surfaces).** Entry points may multiply; access control does not move.
+Every door lands on a page that gates itself in the correct context — the category for the
+hub/landing, the job's category for the More item — never the course context for the
+builder cap, never a system check standing in for the per-category gate.
+
+**Rejected.** The newer `\core\hook\navigation\secondary_extend` for Surface 2 (works, but
+inconsistent with the existing category callback); checking the course context for the More
+item's capability (the wrong-context bug the design exists to avoid); gating Surface 1 on
+`moodle/site:config` (full admins only — excludes managers who build) or a new system cap
+(over-engineered for a coarse pre-filter when the landing page is the true gate); a custom
+`admin_externalpage` subclass looping all categories in `check_access` (cost, and it
+duplicates the landing page's filtering).
+
+**Revisit if.** Moodle deprecates the legacy `extend_navigation_course` callback (move to
+`secondary_extend`), or operators want the top-level link visible to category-only creators
+(would need a per-context-aware admin item or a different surface).

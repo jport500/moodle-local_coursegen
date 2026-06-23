@@ -27,9 +27,16 @@ point it at the policy, get a draft course, check it, publish it.
 
 ## 2. Before you start
 
-**Where it lives.** Open the course **category** where you want the new course to
-go, open its **settings** (the gear / "More" menu on the category page), and
-choose **Course builder**. That opens the hub, which lists your builds and has a
+**Where it lives.** There are three ways in, all leading to the same place:
+- Open the course **category** where you want the new course to go, open its
+  **settings** (the gear / "More" menu on the category page), and choose
+  **Course builder**.
+- From **Site administration → Courses → Course builder**, pick a category from the
+  list — handy when you manage several categories.
+- On a course the builder already generated, the course's **More** menu has a
+  **Course builder** item that jumps straight to that course's build record.
+
+The first two open the **hub** for a category, which lists your builds and has a
 **Create a generation job** button.
 
 **Access you need.** You need the course builder's "generate" permission in that

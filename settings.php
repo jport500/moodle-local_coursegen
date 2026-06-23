@@ -180,3 +180,16 @@ if ($hassiteconfig) {
         0
     ));
 }
+
+// A top-level entry point under Site administration > Courses (Surface 1, D35).
+// Coarse-gated on moodle/course:create (system) — broad enough that plausible
+// course builders see the door; the landing page is the real per-category gate.
+// Added outside the $hassiteconfig block so managers (not just full admins) see it.
+if ($ADMIN->locate('courses')) {
+    $ADMIN->add('courses', new admin_externalpage(
+        'local_coursegen_builder',
+        get_string('landing_admin', 'local_coursegen'),
+        new moodle_url('/local/coursegen/landing.php'),
+        'moodle/course:create'
+    ));
+}

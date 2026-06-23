@@ -3,6 +3,22 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.20.0 — 2026-06-24 (Two better entry points to the course builder)
+
+Two additive navigation doorways into the builder — neither changes the underlying
+category-context model, and both land on pages that still enforce their own access. See
+DECISIONS D35.
+
+- **Per-course "More" item:** on courses the builder generated, the course **More** menu
+  shows a "Course builder" item that deep-links to the generating job's page. Shown only to
+  users who can build in that course's category (the capability is re-checked in the job's
+  category context, not the course context), and only on builder-generated courses. Links to
+  the most recent job when several share the course.
+- **Site administration > Courses link:** a new landing page that lists the categories you
+  can build in and routes into the per-category hub; an operator with builder access in no
+  categories sees a clear empty state. The admin menu item is coarse-gated on
+  `moodle/course:create`; the landing page is the real per-category gate.
+
 ## v0.19.1 — 2026-06-22 (Fix: regenerated image now actually shows)
 
 The D33 regenerate-image action worked server-side but the browser kept showing the old

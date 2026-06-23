@@ -302,6 +302,24 @@ class job_manager {
     }
 
     /**
+     * The category contexts the current user may build in — the same per-category
+     * `can_access` gate the hub uses (D35). Powers the Site-administration landing
+     * page, whose coarse admin capability is only a doorway; this is the real gate.
+     *
+     * @return array<int,string> [category context id => formatted nested category name]
+     */
+    public static function buildable_categories(): array {
+        $out = [];
+        foreach (\core_course_category::get_all() as $category) {
+            $context = $category->get_context();
+            if (self::can_access($context)) {
+                $out[$context->id] = $category->get_nested_name(false);
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Whether the user may manage jobs (archive / opt-in course delete) in a
      * context — the :manage capability (D31).
      *
