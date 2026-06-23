@@ -582,7 +582,11 @@ class materializer {
         \context $coursecontext,
         \stored_file $draftfile
     ): void {
-        global $DB;
+        global $DB, $CFG;
+        // The course_get_format() call below lives in course/lib.php, which
+        // materialize() loads — but this is a public entry point also reached from
+        // the standalone banner regenerate (a web request that doesn't load it).
+        require_once($CFG->dirroot . '/course/lib.php');
         $section0id = (int) $DB->get_field(
             'course_sections',
             'id',

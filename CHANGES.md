@@ -3,6 +3,15 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.21.1 — 2026-06-24 (Fix: header-banner regenerate failed in the browser)
+
+Clicking "Regenerate header banner" reported "Could not regenerate…" — the shared
+section-0 write helper calls `course_get_format()` (from `course/lib.php`), which is loaded
+during a build but not in the standalone regenerate web request. Fixed by requiring
+`course/lib.php` in the helper. (Same class as the D31 completionlib fix; it slipped the
+unit test and the CLI smoke because both run a build first in the same process, pre-loading
+the lib — verified the fix in a separate process that mirrors the fresh web request.)
+
 ## v0.21.0 — 2026-06-24 (Optional AI intro header banner)
 
 An opt-in (default off) feature: generate a wide AI title banner for the course and set it
