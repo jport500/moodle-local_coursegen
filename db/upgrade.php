@@ -135,15 +135,18 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026062300, 'local', 'coursegen');
     }
 
-    if ($oldversion < 2026062400) {
+    if ($oldversion < 2026062402) {
         // P23 (D36): opt-in AI intro header banner for section 0. Default off; the
-        // column DEFAULT backfills existing rows.
+        // column DEFAULT backfills existing rows. (Guarded on 2026062402: D35 already
+        // used 2026062400, and an earlier 2026062401 version shipped without firing
+        // this add, so the guard must clear both to reach sites stuck without the
+        // column. The field_exists check keeps it idempotent for fresh installs.)
         $table = new xmldb_table('coursegen_job');
         $headerbanner = new xmldb_field('headerbanner', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'depth');
         if (!$dbman->field_exists($table, $headerbanner)) {
             $dbman->add_field($table, $headerbanner);
         }
-        upgrade_plugin_savepoint(true, 2026062400, 'local', 'coursegen');
+        upgrade_plugin_savepoint(true, 2026062402, 'local', 'coursegen');
     }
 
     return true;

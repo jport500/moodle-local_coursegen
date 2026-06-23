@@ -1336,3 +1336,62 @@ duplicates the landing page's filtering).
 **Revisit if.** Moodle deprecates the legacy `extend_navigation_course` callback (move to
 `secondary_extend`), or operators want the top-level link visible to category-only creators
 (would need a per-context-aware admin item or a different surface).
+
+## D36 — Optional AI intro header banner on format_pathway's section-0 image
+
+**Decision.** An opt-in (default off) feature: at materialize time, generate one wide title
+banner for the course and set it as **format_pathway's section-0 (Introduction) header
+image** — distinct from the per-section reading-label images (D30, mod_label intro). The
+banner is regenerable, since AI title-text rendering is hit-or-miss.
+
+**The seam (investigated as the gate).** format_pathway stores a section header image in a
+**conventional, backup/restore-participating filearea**: course context, component
+`format_pathway`, filearea `sectionimage`, itemid = the section's DB id. We write it
+directly (like our mod_label image writes) — there is no public format-API setter (the only
+writer is the section-edit form's draft-driven path). Display gates on the course-level
+`pathwayshowimages` option (default `'1'`) AND file presence; it does not consult the
+per-section flag. **Coupling: medium** — a sibling plugin's filearea written by name, but
+the convention is locked by their own backup/restore, so it's stable enough; the coupling
+is centralized in two materializer statics (`write_section0_banner`, `section0_has_banner`)
+so it's the only place to fix if format_pathway ever changes.
+
+**Aspect ratio — 3:2, cropped into the header (no 4:1).** The provider's `calculate_size`
+accepts only `square` / `landscape` (~3:2, 1536×1024 on gpt-image) / `portrait` and throws
+otherwise. So the banner is requested in **`landscape`** and format_pathway crops it into
+its wide header band; a true 4:1 isn't achievable from the provider. The image client gained
+an optional `aspectratio` parameter (default `square`, clamped to the three valid values),
+leaving every existing caller unchanged.
+
+**Separate text-wanting prompt.** `materializer::banner_prompt($title)` is the OPPOSITE of
+the D30 `section_image_prompt` ("no text"): it WANTS the course title rendered as clean
+legible text. Title from `$blueprint->get_title()`. Not a tweak to the section wrapper.
+
+**Opt-in, cap, explicit option, best-effort.** A `coursegen_job.headerbanner` column (course
+-level, mirroring audiencelevel/depth), set by a create-form checkbox (default off). Counts
+one image against the existing sub-cap and is logged like the thumbnail. `pathwayshowimages`
+is set on explicitly (the D25 lesson — a tenant default of `'0'` must not silently hide it).
+**Best-effort:** a generation, cross-plugin file-write, or format-option failure is logged
+and the build continues — the course never fails to build for the banner.
+
+**Regenerate (simpler than D33/D34).** The banner is a standalone file in the filearea with
+no label.intro and no embedded reference — so regeneration has NO HTML edit, no anchor, no
+single-occurrence guard. `banner_regenerator` just generates, writes under a fresh filename
+(a new pluginfile URL busts the browser cache, the D34 lesson), and rebuilds the course
+cache. On failure the existing banner is left intact.
+
+**Rejected.** A 4:1 request (the provider can't); reusing `section_image_prompt` (it forbids
+text — the opposite of a title banner); a public format setter (none exists — direct
+filearea write); failing the build on a banner error (best-effort, like the thumbnail);
+D34's HTML-surgery machinery for regenerate (no HTML here — overkill).
+
+**Footgun fixed during build.** The upgrade step for the `headerbanner` column was first
+guarded `< 2026062400`, but the prior phase D35 already used 2026062400, so the add never
+fired on an existing site (PHPUnit passed because it installs fresh from install.xml; the
+live demo2 DB silently lacked the column and insert_record dropped the value). Fixed by
+guarding `< 2026062402` (clearing both the D35 collision and the dead 2026062401 version)
+with `field_exists` keeping it idempotent. A reminder: a new upgrade savepoint must exceed
+every prior phase's version, and a real-instance smoke catches what fresh-install PHPUnit
+cannot.
+
+**Revisit if.** A provider offers a wider aspect ratio (revisit the crop), or format_pathway
+exposes a public section-image setter (use it instead of the direct filearea write).

@@ -103,6 +103,13 @@ The two combine. *Advanced + Brief* is a short, high-level refresher for experts
 adapts to what your source material can actually support — a one-page policy
 won't stretch to a comprehensive course no matter the setting.
 
+**Intro header banner (optional).** Tick **"Generate an intro header banner"** to
+have the builder create a wide title banner across the top of the course's
+Introduction. It's off by default. AI rendering of the title text is hit-or-miss,
+so if it comes out garbled you can make a fresh one with **"Regenerate header
+banner"** on the job page (reopen the course to see it). It counts as one image
+against the generation image budget.
+
 **Create job** kicks it off and takes you to the job page.
 
 ---

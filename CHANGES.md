@@ -3,6 +3,24 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.21.0 — 2026-06-24 (Optional AI intro header banner)
+
+An opt-in (default off) feature: generate a wide AI title banner for the course and set it
+as the Introduction section's header image in format_pathway. See DECISIONS D36.
+
+- A **"Generate an intro header banner"** checkbox on the create form (off by default). When
+  on, materialize generates one banner and writes it to format_pathway's section-0 header-
+  image storage, turning on the format's section-images display explicitly.
+- The banner is requested in landscape (~3:2 — the provider has no 4:1, so format_pathway
+  crops it into the header), with a prompt that asks for the course title rendered as clean
+  text (the opposite of the text-free section images).
+- AI title text is hit-or-miss, so a **"Regenerate header banner"** button on the job page
+  makes a fresh one (under a new filename, so a normal reload shows it).
+- Best-effort throughout: a banner generation, write, or option failure is logged and the
+  course still builds fine without it. One image against the existing sub-cap.
+- The image client gained an optional aspect-ratio parameter (default square), so section
+  images and the thumbnail are unchanged.
+
 ## v0.20.0 — 2026-06-24 (Two better entry points to the course builder)
 
 Two additive navigation doorways into the builder — neither changes the underlying

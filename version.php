@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_coursegen';
-$plugin->version = 2026062401;
+$plugin->version = 2026062402;
 // Verified floor: only Moodle 5.2 (2026042000) on PHP 8.3 has been exercised. The
 // code uses no 5.2-only APIs, but the declared floor reflects what is actually
 // tested rather than an unverified 5.1/PHP 8.2 claim (see docs/DECISIONS D19).
