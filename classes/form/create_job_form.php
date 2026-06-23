@@ -92,6 +92,11 @@ class create_job_form extends \moodleform {
         $mform->setDefault('depth', $this->_customdata['defaultdepth']);
         $mform->addHelpButton('depth', 'field_depth', 'local_coursegen');
 
+        // Opt-in to an AI intro header banner on section 0 (default off, D36).
+        $mform->addElement('advcheckbox', 'headerbanner', get_string('field_headerbanner', 'local_coursegen'));
+        $mform->setDefault('headerbanner', 0);
+        $mform->addHelpButton('headerbanner', 'field_headerbanner', 'local_coursegen');
+
         $this->add_action_buttons(true, get_string('field_generate', 'local_coursegen'));
     }
 

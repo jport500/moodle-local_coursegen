@@ -109,7 +109,8 @@ class job_manager {
         ?string $topic,
         ?int $draftitemid,
         ?string $audiencelevel = null,
-        ?string $depth = null
+        ?string $depth = null,
+        bool $headerbanner = false
     ): int {
         global $DB, $CFG;
         require_once($CFG->libdir . '/filelib.php');
@@ -131,6 +132,7 @@ class job_manager {
             'mode' => ($mode === 'automatic') ? 'automatic' : 'outlinefirst',
             'audiencelevel' => course_depth::normalize_level($audiencelevel),
             'depth' => course_depth::normalize_depth($depth),
+            'headerbanner' => $headerbanner ? 1 : 0,
             'status' => self::STATUS_EXTRACTING,
             'estimatedspend' => null,
             'actualspend' => null,

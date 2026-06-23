@@ -105,7 +105,8 @@ if ($action === 'create') {
             $data->topic ?? null,
             $data->sources ?? null,
             $data->audiencelevel ?? $defaultlevel,
-            $data->depth ?? $defaultdepth
+            $data->depth ?? $defaultdepth,
+            !empty($data->headerbanner)
         );
         // Land the operator on the job page so they watch it progress, rather
         // than a flash notification on a dead page.

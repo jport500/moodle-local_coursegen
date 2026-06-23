@@ -113,6 +113,35 @@ final class job_manager_test extends \advanced_testcase {
     }
 
     /**
+     * The header-banner opt-in round-trips: off by default, on when requested (D36).
+     *
+     * @return void
+     */
+    public function test_header_banner_opt_in(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $context = $this->category_context();
+
+        // Default: off.
+        $jobid = job_manager::create_job($context, $this->admin_id(), 'outlinefirst', 'No banner.', null);
+        $this->assertEquals(0, (int) $DB->get_field('coursegen_job', 'headerbanner', ['id' => $jobid]));
+
+        // Opted in.
+        $jobid = job_manager::create_job(
+            $context,
+            $this->admin_id(),
+            'outlinefirst',
+            'With banner.',
+            null,
+            null,
+            null,
+            true
+        );
+        $this->assertEquals(1, (int) $DB->get_field('coursegen_job', 'headerbanner', ['id' => $jobid]));
+    }
+
+    /**
      * An uploaded file becomes a pending source with the file in the permanent area.
      *
      * @return void

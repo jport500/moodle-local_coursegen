@@ -135,5 +135,16 @@ function xmldb_local_coursegen_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026062300, 'local', 'coursegen');
     }
 
+    if ($oldversion < 2026062400) {
+        // P23 (D36): opt-in AI intro header banner for section 0. Default off; the
+        // column DEFAULT backfills existing rows.
+        $table = new xmldb_table('coursegen_job');
+        $headerbanner = new xmldb_field('headerbanner', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'depth');
+        if (!$dbman->field_exists($table, $headerbanner)) {
+            $dbman->add_field($table, $headerbanner);
+        }
+        upgrade_plugin_savepoint(true, 2026062400, 'local', 'coursegen');
+    }
+
     return true;
 }

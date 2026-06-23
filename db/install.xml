@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/coursegen/db" VERSION="20260623" COMMENT="Tables for local_coursegen (v0.1 schema — SPEC §3)."
+<XMLDB PATH="local/coursegen/db" VERSION="20260624" COMMENT="Tables for local_coursegen (v0.1 schema — SPEC §3)."
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
 >
@@ -13,6 +13,7 @@
         <FIELD NAME="mode" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="outlinefirst" SEQUENCE="false" COMMENT="Generation mode: outlinefirst | automatic."/>
         <FIELD NAME="audiencelevel" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="intermediate" SEQUENCE="false" COMMENT="Operator-chosen audience pitch: beginner | intermediate | advanced (D26)."/>
         <FIELD NAME="depth" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="standard" SEQUENCE="false" COMMENT="Operator-chosen length/depth: brief | standard | comprehensive (D26)."/>
+        <FIELD NAME="headerbanner" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Opt-in to generate an AI intro header banner for section 0: 0 off | 1 on (D36)."/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="extracting" SEQUENCE="false" COMMENT="extracting | blueprinted | awaiting_review | materializing | assessing | complete | failed."/>
         <FIELD NAME="estimatedspend" TYPE="number" LENGTH="10" DECIMALS="4" NOTNULL="false" SEQUENCE="false" COMMENT="Estimated generation cost computed at the blueprint stage."/>
         <FIELD NAME="actualspend" TYPE="number" LENGTH="10" DECIMALS="4" NOTNULL="false" SEQUENCE="false" COMMENT="Actual accrued generation cost."/>
