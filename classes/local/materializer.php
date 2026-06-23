@@ -546,24 +546,7 @@ class materializer {
         // format-option set, so the course still materializes fine without the
         // banner. Deliberately broad — any error here must not fail the build.
         try {
-            $section0 = $DB->get_record(
-                'course_sections',
-                ['course' => $course->id, 'section' => 0],
-                'id',
-                MUST_EXIST
-            );
-            $ext = pathinfo($result->draftfile->get_filename(), PATHINFO_EXTENSION) ?: 'png';
-            $fs = get_file_storage();
-            $fs->delete_area_files($coursecontext->id, 'format_pathway', 'sectionimage', (int) $section0->id);
-            $fs->create_file_from_storedfile([
-                'contextid' => $coursecontext->id,
-                'component' => 'format_pathway',
-                'filearea' => 'sectionimage',
-                'itemid' => (int) $section0->id,
-                'filepath' => '/',
-                'filename' => bin2hex(random_bytes(8)) . '.' . $ext,
-            ], $result->draftfile);
-            course_get_format($course)->update_course_format_options((object) ['pathwayshowimages' => '1']);
+            self::write_section0_banner($course, $coursecontext, $result->draftfile);
         } catch (\Throwable $e) {
             $this->log(
                 $job,
@@ -578,6 +561,72 @@ class materializer {
                 audit_log::FAILURE
             );
         }
+    }
+
+    /**
+     * The shared MECHANISM (D36) for placing a banner into format_pathway's
+     * section-0 header-image filearea: delete the old file, write the new one
+     * under a fresh unique filename (cache-bust hygiene, D34), and turn on the
+     * course-level pathwayshowimages option (the D25 lesson). Couples to
+     * format_pathway's conventional, backup/restore-participating filearea
+     * (course context, component 'format_pathway', filearea 'sectionimage',
+     * itemid = section-0 DB id). Mechanism only — the caller handles best-effort.
+     *
+     * @param \stdClass $course The course.
+     * @param \context $coursecontext The course context.
+     * @param \stored_file $draftfile The generated banner image.
+     * @return void
+     */
+    public static function write_section0_banner(
+        \stdClass $course,
+        \context $coursecontext,
+        \stored_file $draftfile
+    ): void {
+        global $DB;
+        $section0id = (int) $DB->get_field(
+            'course_sections',
+            'id',
+            ['course' => $course->id, 'section' => 0],
+            MUST_EXIST
+        );
+        $ext = pathinfo($draftfile->get_filename(), PATHINFO_EXTENSION) ?: 'png';
+        $fs = get_file_storage();
+        $fs->delete_area_files($coursecontext->id, 'format_pathway', 'sectionimage', $section0id);
+        $fs->create_file_from_storedfile([
+            'contextid' => $coursecontext->id,
+            'component' => 'format_pathway',
+            'filearea' => 'sectionimage',
+            'itemid' => $section0id,
+            'filepath' => '/',
+            'filename' => bin2hex(random_bytes(8)) . '.' . $ext,
+        ], $draftfile);
+        course_get_format($course)->update_course_format_options((object) ['pathwayshowimages' => '1']);
+    }
+
+    /**
+     * Whether section 0 currently has a format_pathway header-image file (D36) —
+     * used to offer and validate banner regeneration.
+     *
+     * @param int $courseid The course id.
+     * @return bool
+     */
+    public static function section0_has_banner(int $courseid): bool {
+        global $DB;
+        if (empty($courseid) || !$DB->record_exists('course', ['id' => $courseid])) {
+            return false;
+        }
+        $section0id = (int) $DB->get_field('course_sections', 'id', ['course' => $courseid, 'section' => 0]);
+        if (!$section0id) {
+            return false;
+        }
+        return (bool) get_file_storage()->get_area_files(
+            \context_course::instance($courseid)->id,
+            'format_pathway',
+            'sectionimage',
+            $section0id,
+            'id',
+            false
+        );
     }
 
     /**

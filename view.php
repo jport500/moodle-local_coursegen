@@ -93,6 +93,23 @@ if ($action === 'regenimage') {
     );
 }
 
+// Regenerate the course's intro header banner (D36) — course-level, same gating.
+if ($action === 'regenbanner') {
+    require_sesskey();
+    if (!$canreview) {
+        require_capability('local/coursegen:generate', $context);
+    }
+    $ok = (new \local_coursegen\local\banner_regenerator(
+        new \local_coursegen\local\ai\core_ai_image_client()
+    ))->regenerate($job, $USER->id);
+    redirect(
+        $url,
+        get_string($ok ? 'regenbanner_success' : 'regenbanner_failed', 'local_coursegen'),
+        null,
+        $ok ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_ERROR
+    );
+}
+
 if ($action === 'unarchive') {
     require_sesskey();
     job_manager::require_manage($context);
@@ -251,6 +268,16 @@ switch ($phase) {
                 ),
                 'mb-3'
             );
+            // Regenerate the intro header banner (D36) — only when one was opted in
+            // and a banner is actually present, for reviewers/builders. POST.
+            if ($canreview && materializer::section0_has_banner((int) $job->courseid)) {
+                echo html_writer::start_tag('form', ['method' => 'post', 'action' => $url->out(false), 'class' => 'mb-3']);
+                echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'regenbanner']);
+                echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+                echo html_writer::empty_tag('input', ['type' => 'submit',
+                    'value' => get_string('regenbanner_button', 'local_coursegen'), 'class' => 'btn btn-secondary']);
+                echo html_writer::end_tag('form');
+            }
         }
         break;
 
