@@ -3,6 +3,25 @@
 All notable changes to this plugin are recorded here, newest first. One
 entry per phase / release, per the LMS Light working process.
 
+## v0.21.2 — 2026-07-01 (Fix: reading bodies rendered as raw Markdown)
+
+On generated courses, some section reading bodies rendered as literal Markdown (raw `##`,
+`-`, `**`) while others rendered as clean HTML — mixed within a single course. Root cause:
+the drafting model's output format is not reliably pinned and varies **per call**; the
+reading path stored that output under the label's `FORMAT_HTML`, so a Markdown body rendered
+its literal markers. (The intro "what you'll cover" list always rendered because it is built
+deterministically with `html_writer`, a different code path.) See DECISIONS D37.
+
+- Every reading body is now normalized to HTML with core `markdown_to_html()` **inside
+  `draft_reading`, right after the fence-strip** — before the section image and the
+  `{knowledgecheck}` token are appended. Markdown converts (`##` → `<h2>`, `-` → `<li>`,
+  `**` → `<strong>`), while a body already in HTML passes through unchanged (no double-
+  escaping) — so it handles either format arriving per section, and the deterministic image
+  and token never pass through the converter.
+- The reading prompt is hardened toward HTML (belt-and-suspenders — the converter is the
+  actual guarantee, since the prompt is unenforceable).
+- No DB or schema change; existing already-built courses are unaffected until re-materialized.
+
 ## v0.21.1 — 2026-06-24 (Fix: header-banner regenerate failed in the browser)
 
 Clicking "Regenerate header banner" reported "Could not regenerate…" — the shared

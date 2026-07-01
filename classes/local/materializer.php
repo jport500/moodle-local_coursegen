@@ -654,12 +654,42 @@ Section summary: {$section['summary']}.
 
 Audience: {$pitch}
 
-Return a clean HTML fragment (headings, paragraphs, lists) suitable for
-embedding directly in a page — no <html>/<head>/<body> wrapper and no code
-fences.
+Return the reading as an HTML fragment ONLY — use <h2>/<h3> for headings,
+<p> for paragraphs, <ul>/<ol> and <li> for lists, and <strong>/<em> for
+emphasis. Do NOT use Markdown syntax (no #, *, -, or backtick markers). No
+<html>/<head>/<body> wrapper and no code fences.
 PROMPT;
         $result = $this->call_text($job, $context, self::TIER_DRAFTING, 'draft reading: ' . $section['title'], $prompt);
-        return $result->success ? $this->strip_fences($result->content) : '';
+        return $result->success ? $this->normalize_reading_html($result->content) : '';
+    }
+
+    /**
+     * Normalize a reading body to HTML.
+     *
+     * The drafting model's output format is not reliably pinned and varies per
+     * call — some sections come back as HTML, others as raw Markdown, sometimes
+     * mixed within one body (D37). Stored under FORMAT_HTML (see
+     * {@see create_label}), a Markdown body renders literally (raw ##, -, **).
+     * Run every body through core markdown_to_html(): Markdown syntax is
+     * converted (## -> <h2>, - -> <li>, ** -> <strong>) while existing
+     * inline/block HTML is passed through unchanged (MarkdownExtra treats HTML
+     * as literal), so an already-HTML body survives without double-escaping and
+     * a mixed body converts only its Markdown. The conversion is idempotent, so
+     * a body that is already HTML is a no-op. This handles the per-call
+     * variability without a fragile "is this HTML or Markdown?" branch.
+     *
+     * Runs AFTER the fence-strip, on the model prose ONLY — before the section
+     * image ({@see generate_and_attach_image}) and the {knowledgecheck} token
+     * are appended — so those deterministic HTML insertions never pass through
+     * the converter. markdown_to_html() lives in weblib, which setup.php loads
+     * on every entry point (including this scheduled-task path), so no
+     * require_once is needed (unlike the course/lib.php trap).
+     *
+     * @param string $content The raw model output.
+     * @return string HTML suitable for a FORMAT_HTML label.
+     */
+    private function normalize_reading_html(string $content): string {
+        return markdown_to_html($this->strip_fences($content));
     }
 
     /**

@@ -1395,3 +1395,63 @@ cannot.
 
 **Revisit if.** A provider offers a wider aspect ratio (revisit the crop), or format_pathway
 exposes a public section-image setter (use it instead of the direct filearea write).
+
+## D37 — Normalize reading bodies to HTML (fix raw-Markdown rendering)
+
+**Symptom.** On generated courses, some section reading bodies rendered as literal Markdown
+(raw `##`, `-`, `**`) while others in the **same course, same build** rendered as clean HTML.
+The intro "what you'll cover" list always rendered correctly.
+
+**Root cause — unpinned, per-call-variable model output format (NOT an introformat mismatch).**
+Both the intro and the reading go through the same `create_label`, which hardcodes
+`FORMAT_HTML` — so the format flag is identical and constant. The difference is the content.
+The intro is built deterministically with `html_writer` (guaranteed HTML). The reading is the
+drafting model's output, stored verbatim (only code fences stripped — no conversion). The
+reading prompt *asks* for an HTML fragment but nothing enforces it, so the model's format is
+its own choice and varies **per call**: production evidence showed one course with pure-HTML,
+pure-Markdown, and mixed (Markdown prose + an embedded `<img>`) reading rows side by side, all
+with `introformat = 1`. Under `FORMAT_HTML`, a Markdown body renders its literal markers.
+
+**Fix — normalize every reading body to HTML, handling either format per section.** Because
+the format is per-call variable, any fix that assumes one format is wrong: a blanket
+convert-all would double-mangle the already-HTML sections; a blanket `FORMAT_MARKDOWN` switch
+would mislabel them. Instead run each body through core `markdown_to_html()`
+(`\Michelf\MarkdownExtra`), which converts Markdown syntax **and passes existing inline/block
+HTML through as literal** — so a Markdown body converts, an HTML body survives unchanged (no
+double-escaping), and a mixed body converts only its Markdown. The conversion is idempotent.
+No `is-this-HTML-or-Markdown?` branch (it would misclassify the mixed bodies).
+
+**Placement — prose only, inside `draft_reading`, right after the fence-strip.** The section
+image (`generate_and_attach_image`) and the `{knowledgecheck}` token are appended to the body
+*after* `draft_reading` returns. Normalizing inside `draft_reading` means the converter only
+ever sees model prose; our two deterministic HTML insertions are added afterward and never
+pass through it — a cleaner boundary than normalizing after the append (which also works — the
+`<img>` survives the converter — but needlessly runs our own HTML through it). The token stays
+byte-for-byte intact for `filter_knowledgecheck` to resolve.
+
+**Lib-loading — no `require_once` needed (verified, not assumed).** `markdown_to_html()` lives
+in `weblib.php`, which `lib/setup.php` loads on **every** entry point including scheduled tasks
+— unlike `course/lib.php` (the D36 banner trap, absent from setup). Confirmed rather than
+assumed, since this is the recurring lib-loading bug class; the materializer already calling
+`format_text()`/`s()` from weblib is proof it is present on the path.
+
+**Prompt hardened as backup.** The reading prompt is made explicitly HTML-only (name the tags,
+forbid Markdown markers) — belt-and-suspenders that reduces how often conversion is needed, but
+the converter is the actual guarantee since the prompt is unenforceable.
+
+**Scope.** Materialize path only. `section_regenerator` regenerates the blueprint section spec
+(JSON), not stored reading HTML — the reading is (re)built through `draft_reading` at
+materialize, so it inherits the fix. `image_regenerator` preserves existing reading prose
+byte-for-byte, so it is unaffected. No DB/schema change; already-built courses keep their
+stored (possibly raw) bodies until re-materialized — a separate data-remediation question, not
+a code fix.
+
+**Rejected.** Binary HTML-vs-Markdown branch (misclassifies mixed bodies); blanket
+convert-all (double-mangles already-HTML sections); a `FORMAT_MARKDOWN` introformat switch
+(mislabels the HTML sections — the format is per-call variable, not fixed); relying on the
+prompt alone (unenforceable — it is the reason the bug exists).
+
+**Revisit if.** The drafting client is changed to guarantee a single output format (the
+normalization becomes a cheap idempotent no-op but can stay as a safety net), or a
+data-remediation pass is wanted to normalize the reading bodies of courses built before this
+fix (re-materialize, or a one-off `markdown_to_html` migration over stored `label.intro`).

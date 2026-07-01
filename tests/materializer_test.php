@@ -1214,6 +1214,170 @@ final class materializer_test extends \advanced_testcase {
     }
 
     /**
+     * A reading body returned as raw Markdown is normalized to HTML before
+     * storage (D37): ## -> <h2>, - -> <li>, ** -> <strong>. Under the label's
+     * FORMAT_HTML a Markdown body would otherwise render its literal markers.
+     * The deterministic intro bookend (built with html_writer, not the
+     * converter) is unaffected.
+     *
+     * @return void
+     */
+    public function test_markdown_reading_body_stored_as_html(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Topic', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $md = "## Section Heading\n\nIntro prose with **bold** and *italic*.\n\n- first point\n- second point";
+        $stub = new stub_text_client([new text_result(
+            success: true,
+            content: $md,
+            model: 'm',
+            provider: 'p',
+            prompttokens: 5,
+            completiontokens: 5,
+        )]);
+        $this->assertTrue((new materializer($stub, new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+
+        $intro = $this->label_intro($courseid);
+        $this->assertStringContainsString('<h2>Section Heading</h2>', $intro);
+        $this->assertStringContainsString('<strong>bold</strong>', $intro);
+        $this->assertStringContainsString('<em>italic</em>', $intro);
+        $this->assertStringContainsString('<li>first point</li>', $intro);
+        // No literal Markdown markers survive to be rendered raw.
+        $this->assertStringNotContainsString('## Section', $intro);
+        $this->assertStringNotContainsString('- first point', $intro);
+
+        // The intro bookend (section 0), built deterministically with html_writer,
+        // still carries its overview list — untouched by the reading normalization.
+        $this->assertStringContainsString('<ul>', $this->label_intro($courseid, 0));
+    }
+
+    /**
+     * A reading body already returned as HTML survives normalization unchanged —
+     * no double-escaping into entities (D37). MarkdownExtra passes existing
+     * HTML through as literal, so the idempotent pass is a no-op on real tags.
+     *
+     * @return void
+     */
+    public function test_html_reading_body_survives_without_double_escaping(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $job = $this->approved_job_with([
+            ['title' => 'Topic', 'summary' => 's', 'assessment' => ['type' => 'none']],
+        ]);
+
+        $html = "<h2>Heading</h2>\n<p>Prose with <strong>bold</strong>.</p>\n<ul>\n<li>one</li>\n</ul>";
+        $stub = new stub_text_client([new text_result(
+            success: true,
+            content: $html,
+            model: 'm',
+            provider: 'p',
+            prompttokens: 5,
+            completiontokens: 5,
+        )]);
+        $this->assertTrue((new materializer($stub, new stub_image_client(false), new stub_quiz_client(true)))
+            ->materialize($job));
+
+        $intro = $this->label_intro((int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]));
+        $this->assertStringContainsString('<h2>Heading</h2>', $intro);
+        $this->assertStringContainsString('<strong>bold</strong>', $intro);
+        $this->assertStringContainsString('<li>one</li>', $intro);
+        // The tags were passed through, not escaped.
+        $this->assertStringNotContainsString('&lt;', $intro);
+        $this->assertStringNotContainsString('&gt;', $intro);
+    }
+
+    /**
+     * The production-shaped mixed case (D37): an image-enabled, assessed
+     * section whose reading prose comes back as raw Markdown. The prose is
+     * converted to HTML, while the section image and the {knowledgecheck} token
+     * — both appended AFTER normalization — are intact and well-formed, proving
+     * the append-after-normalize ordering end to end.
+     *
+     * @return void
+     */
+    public function test_mixed_reading_prose_converts_image_and_token_intact(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('enablecompletion', 1);
+        filter_set_global_state('knowledgecheck', TEXTFILTER_ON);
+        $job = $this->approved_job_with([
+            ['title' => 'Assessed', 'summary' => 's', 'objectives' => ['o'],
+             'image' => ['generate' => true, 'prompthint' => 'a diagram'],
+             'assessment' => ['type' => 'knowledgecheck', 'questioncount' => 2]],
+        ]);
+
+        // Call 0 is the reading (raw Markdown); call 1 is the image alt text.
+        $md = "## Boating Rules\n\nProse with **bold**.\n\n- rule one\n- rule two";
+        $stub = new stub_text_client([
+            new text_result(
+                success: true,
+                content: $md,
+                model: 'm',
+                provider: 'p',
+                prompttokens: 5,
+                completiontokens: 5,
+            ),
+            new text_result(
+                success: true,
+                content: 'A diagram of boats.',
+                model: 'm',
+                provider: 'p',
+                prompttokens: 3,
+                completiontokens: 3,
+            ),
+        ]);
+        $this->assertTrue((new materializer($stub, new stub_image_client(true), new stub_quiz_client(true)))
+            ->materialize($job));
+
+        $courseid = (int) $DB->get_field('coursegen_job', 'courseid', ['id' => $job->id]);
+        $intro = $this->label_intro($courseid);
+        $kc = $DB->get_record('knowledgecheck', ['course' => $courseid], '*', MUST_EXIST);
+
+        // The prose Markdown was converted to HTML.
+        $this->assertStringContainsString('<h2>Boating Rules</h2>', $intro);
+        $this->assertStringContainsString('<strong>bold</strong>', $intro);
+        $this->assertStringContainsString('<li>rule one</li>', $intro);
+        $this->assertStringNotContainsString('## Boating', $intro);
+        // The section image, appended after normalization, is intact — the
+        // converter never saw it (bare <img>, class preserved, not escaped).
+        $this->assertStringContainsString('<img ', $intro);
+        $this->assertStringContainsString('class="img-fluid"', $intro);
+        // The knowledgecheck token, appended after normalization, is intact and
+        // well-formed for the filter to resolve.
+        $this->assertStringContainsString('<p>{knowledgecheck id=' . $kc->uuid . '}</p>', $intro);
+    }
+
+    /**
+     * The raw stored intro of the reading label in a content section (default 1),
+     * or the intro/wrap-up bookend when a specific section is passed (0 for the
+     * intro). Read pre-format_text, i.e. the bytes as stored.
+     *
+     * @param int $courseid The course id.
+     * @param int $sectionnum The section number (default 1, the content section).
+     * @return string
+     */
+    private function label_intro(int $courseid, int $sectionnum = 1): string {
+        global $DB;
+        return (string) $DB->get_field_sql(
+            "SELECT l.intro
+               FROM {label} l
+               JOIN {course_modules} cm ON cm.instance = l.id
+               JOIN {modules} m ON m.id = cm.module AND m.name = 'label'
+               JOIN {course_sections} s ON s.id = cm.section
+              WHERE cm.course = :course AND s.section = :sectionnum",
+            ['course' => $courseid, 'sectionnum' => $sectionnum]
+        );
+    }
+
+    /**
      * Insert an approved job with the given section specs.
      *
      * @param array[] $sections Section specs in blueprint::from_array shape.
